@@ -9,6 +9,10 @@ class Config:
     MONGODB_URI = os.getenv("MONGODB_URI", "mongodb://localhost:27017")
     MONGODB_DB_NAME = os.getenv("MONGODB_DB_NAME", "ai_news_reporter")
     LINKEDIN_ACCESS_TOKEN = os.getenv("LINKEDIN_ACCESS_TOKEN", "")
+    
+    # Facebook settings
+    FACEBOOK_PAGE_ACCESS_TOKEN = os.getenv("FACEBOOK_PAGE_ACCESS_TOKEN", "")
+    FACEBOOK_PAGE_ID = os.getenv("FACEBOOK_PAGE_ID", "")
 
     # Search settings
     MAX_SEARCH_RESULTS = 5

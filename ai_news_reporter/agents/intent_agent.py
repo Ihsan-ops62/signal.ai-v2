@@ -22,15 +22,15 @@ class IntentAgent:
 
         Categories:
             - ``news_query``    – user wants to read tech news.
-            - ``post_request``  – user wants to post to LinkedIn directly.
+            - ``post_request``  – user wants to post to LinkedIn or Facebook directly.
             - ``news_then_post``– user wants news fetched, summarised, then posted.
             - ``other``         – anything else.
         """
         prompt = f"""You are an intent classifier. Classify the user's request into exactly one of these categories:
 
 - news_query      : user asks for latest tech news only (e.g. "What is the latest news in AI?")
-- post_request    : user asks to post something on LinkedIn (e.g. "Post this to LinkedIn")
-- news_then_post  : user wants news searched, summarized, then posted (e.g. "Find ML news and post it")
+- post_request    : user asks to post something on LinkedIn or Facebook (e.g. "Post this to Facebook")
+- news_then_post  : user wants news searched, summarized, then posted (e.g. "Find ML news and post on Facebook")
 - other           : anything else
 
 User query: "{query}"
@@ -57,3 +57,17 @@ Rules:
 
         logger.info("Classified intent: %r → %r", query[:60], intent)
         return intent
+
+    async def detect_platform(self, query: str) -> str:
+        """Detect which social platform the user wants to post to.
+        
+        Returns:
+            - 'facebook' if user mentions Facebook
+            - 'linkedin' otherwise (default)
+        """
+        query_lower = query.lower()
+        if any(platform in query_lower for platform in ['facebook', 'fb', 'meta']):
+            logger.info("Detected platform: Facebook")
+            return 'facebook'
+        logger.info("Detected platform: LinkedIn (default)")
+        return 'linkedin'
