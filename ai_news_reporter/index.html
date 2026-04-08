@@ -1,0 +1,786 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>NewsDesk · AI Reporter</title>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,700;1,400&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@300;400;500;600&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --ink:     #0f0e0c;
+    --paper:   #f5f0e8;
+    --cream:   #ede8dc;
+    --rule:    #c8b89a;
+    --accent:  #c0392b;
+    --accent2: #1a6b3c;
+    --muted:   #6b6256;
+    --card-bg: #faf7f2;
+    --mono:    'IBM Plex Mono', monospace;
+    --serif:   'Playfair Display', Georgia, serif;
+    --sans:    'IBM Plex Sans', sans-serif;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--paper);
+    color: var(--ink);
+    font-family: var(--sans);
+    min-height: 100vh;
+    display: grid;
+    grid-template-rows: auto 1fr;
+  }
+
+  /* ── Masthead ── */
+  header {
+    border-bottom: 3px double var(--ink);
+    padding: 18px 32px 14px;
+    display: flex;
+    align-items: baseline;
+    gap: 20px;
+    background: var(--paper);
+    position: sticky;
+    top: 0;
+    z-index: 100;
+  }
+  .masthead-title { font-family: var(--serif); font-size: 2rem; letter-spacing: -.5px; line-height: 1; }
+  .masthead-title span { color: var(--accent); font-style: italic; }
+  .masthead-meta {
+    font-family: var(--mono);
+    font-size: .68rem;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: .08em;
+    border-left: 1px solid var(--rule);
+    padding-left: 16px;
+    line-height: 1.5;
+  }
+  .live-dot {
+    display: inline-block;
+    width: 7px; height: 7px;
+    background: var(--accent);
+    border-radius: 50%;
+    margin-right: 5px;
+    animation: blink 1.4s infinite;
+  }
+  @keyframes blink { 0%,100%{opacity:1} 50%{opacity:.2} }
+
+  /* ── Layout ── */
+  .workspace {
+    display: grid;
+    grid-template-columns: 1fr 380px;
+    height: calc(100vh - 70px);
+  }
+
+  /* ── Feed (left) ── */
+  .feed {
+    border-right: 1px solid var(--rule);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  .feed-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 24px;
+    border-bottom: 1px solid var(--cream);
+    background: var(--card-bg);
+    flex-shrink: 0;
+  }
+  .feed-toolbar label {
+    font-family: var(--mono);
+    font-size: .72rem;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: .06em;
+    white-space: nowrap;
+  }
+  .query-input {
+    flex: 1;
+    border: 1px solid var(--rule);
+    background: var(--paper);
+    font-family: var(--sans);
+    font-size: .92rem;
+    padding: 8px 14px;
+    outline: none;
+    color: var(--ink);
+    transition: border-color .2s;
+  }
+  .query-input:focus { border-color: var(--ink); }
+  .query-input::placeholder { color: var(--rule); }
+  /* BUG FIX 4 support: visually reflect disabled state on input too */
+  .query-input:disabled { opacity: .5; cursor: not-allowed; }
+
+  .btn {
+    font-family: var(--mono);
+    font-size: .75rem;
+    font-weight: 500;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+    border: 1.5px solid var(--ink);
+    background: transparent;
+    color: var(--ink);
+    padding: 8px 18px;
+    cursor: pointer;
+    transition: background .15s, color .15s;
+    white-space: nowrap;
+  }
+  .btn:hover  { background: var(--ink); color: var(--paper); }
+  .btn:active { opacity: .8; }
+  .btn.primary { background: var(--ink); color: var(--paper); }
+  .btn.primary:hover { background: #333; }
+  .btn.danger  { border-color: var(--accent); color: var(--accent); }
+  .btn.danger:hover  { background: var(--accent);  color: #fff; }
+  .btn.success { border-color: var(--accent2); color: var(--accent2); }
+  .btn.success:hover { background: var(--accent2); color: #fff; }
+  /* BUG FIX 4: proper disabled state */
+  .btn:disabled { opacity: .38; cursor: not-allowed; pointer-events: none; }
+
+  /* ── Stage bar ── */
+  .stage-bar {
+    display: flex;
+    gap: 6px;
+    padding: 8px 24px;
+    border-bottom: 1px solid var(--cream);
+    background: var(--card-bg);
+    flex-shrink: 0;
+    flex-wrap: wrap;
+  }
+  .stage {
+    font-family: var(--mono);
+    font-size: .65rem;
+    text-transform: uppercase;
+    letter-spacing: .07em;
+    padding: 3px 10px;
+    border: 1px solid var(--cream);
+    color: var(--rule);
+    transition: all .3s;
+  }
+  .stage.active { border-color: #d4a81a; color: #8a6a0a; background: #fffbf0; }
+  .stage.done   { border-color: var(--accent2); color: var(--accent2); background: #f0fdf4; }
+  .stage.error  { border-color: var(--accent);  color: var(--accent);  background: #fdf0f0; }
+
+  /* ── BUG FIX 7: Loading skeleton shown while LLM is working ── */
+  .loading-indicator {
+    display: none;
+    align-items: center;
+    gap: 12px;
+    padding: 20px 24px;
+    flex-shrink: 0;
+    border-bottom: 1px solid var(--cream);
+  }
+  .loading-indicator.visible { display: flex; }
+  .spinner {
+    width: 16px; height: 16px;
+    border: 2px solid var(--cream);
+    border-top-color: var(--ink);
+    border-radius: 50%;
+    animation: spin .7s linear infinite;
+    flex-shrink: 0;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .loading-label {
+    font-family: var(--mono);
+    font-size: .72rem;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: .06em;
+  }
+  /* skeleton cards while loading */
+  .skeleton-card {
+    background: var(--card-bg);
+    border: 1px solid var(--cream);
+    padding: 16px 18px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .skeleton-line {
+    height: 12px;
+    background: linear-gradient(90deg, var(--cream) 25%, var(--paper) 50%, var(--cream) 75%);
+    background-size: 200% 100%;
+    animation: shimmer 1.4s infinite;
+    border-radius: 2px;
+  }
+  .skeleton-line.title { height: 18px; width: 75%; }
+  .skeleton-line.short { width: 40%; }
+  @keyframes shimmer { from{background-position:200% 0} to{background-position:-200% 0} }
+
+  /* ── Confirmation banner ── */
+  .confirm-banner {
+    background: #fffbf0;
+    border: 1.5px solid #d4a81a;
+    margin: 0 24px;
+    padding: 14px 18px;
+    display: none;
+    flex-direction: column;
+    gap: 10px;
+    animation: slideIn .2s ease;
+    flex-shrink: 0;
+  }
+  .confirm-banner.visible { display: flex; }
+  .confirm-title { font-family: var(--serif); font-size: 1rem; font-style: italic; }
+  .confirm-sub   { font-size: .82rem; color: var(--muted); line-height: 1.5; }
+  .confirm-actions { display: flex; gap: 10px; }
+
+  /* ── Articles scroll ── */
+  .articles-scroll {
+    flex: 1;
+    overflow-y: auto;
+    padding: 20px 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+  @keyframes slideIn { from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:none} }
+
+  .empty-state {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    gap: 10px;
+    color: var(--muted);
+    padding: 60px;
+  }
+  .empty-state .big { font-family: var(--serif); font-size: 3.5rem; opacity: .25; }
+  .empty-state p { font-size: .88rem; line-height: 1.7; max-width: 340px; }
+
+  .article-card {
+    background: var(--card-bg);
+    border: 1px solid var(--cream);
+    padding: 16px 18px;
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 8px;
+    animation: slideIn .25s ease;
+  }
+  .article-card:hover { border-color: var(--rule); }
+  .article-index {
+    font-family: var(--mono);
+    font-size: .65rem;
+    color: var(--rule);
+    grid-column: 1 / -1;
+    margin-bottom: 2px;
+    text-transform: uppercase;
+    letter-spacing: .08em;
+  }
+  .article-title {
+    font-family: var(--serif);
+    font-size: 1.05rem;
+    font-weight: 700;
+    line-height: 1.35;
+    grid-column: 1;
+  }
+  .article-summary {
+    font-size: .86rem;
+    line-height: 1.65;
+    color: #3a3530;
+    grid-column: 1 / -1;
+    margin-top: 6px;
+  }
+  .article-source {
+    font-family: var(--mono);
+    font-size: .65rem;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: .06em;
+    grid-column: 1 / -1;
+    border-top: 1px solid var(--cream);
+    padding-top: 8px;
+    margin-top: 4px;
+  }
+  .status-badge {
+    font-family: var(--mono);
+    font-size: .6rem;
+    text-transform: uppercase;
+    letter-spacing: .08em;
+    padding: 3px 8px;
+    border: 1px solid;
+    align-self: start;
+  }
+  .badge-new { border-color: var(--accent2); color: var(--accent2); }
+
+  /* ── Sidebar (right) ── */
+  .sidebar { display: flex; flex-direction: column; overflow: hidden; }
+  .sidebar-header {
+    padding: 14px 20px 12px;
+    border-bottom: 1px solid var(--cream);
+    background: var(--card-bg);
+    flex-shrink: 0;
+  }
+  .sidebar-label {
+    font-family: var(--mono);
+    font-size: .68rem;
+    text-transform: uppercase;
+    letter-spacing: .1em;
+    color: var(--muted);
+  }
+  .sidebar-title { font-family: var(--serif); font-size: 1.1rem; margin-top: 2px; }
+  .post-area {
+    flex: 1;
+    overflow-y: auto;
+    padding: 16px 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  /* BUG FIX 6: remove display:flex from base state — it fights white-space:pre-wrap.
+     Use display:block always. Center the placeholder text with CSS instead. */
+  .post-preview {
+    background: var(--paper);
+    border: 1px solid var(--cream);
+    border-left: 3px solid var(--ink);
+    padding: 14px 16px;
+    font-size: .86rem;
+    line-height: 1.75;
+    white-space: pre-wrap;
+    word-break: break-word;
+    min-height: 160px;
+    font-family: var(--sans);
+    color: var(--muted);
+    /* placeholder centering — no flex needed */
+    display: grid;
+    place-items: center;
+    text-align: center;
+  }
+  .post-preview.has-content {
+    color: var(--ink);
+    display: block;       /* ← back to block so pre-wrap wraps correctly */
+    text-align: left;
+  }
+
+  .word-counter { font-family: var(--mono); font-size: .65rem; color: var(--rule); text-align: right; }
+  .post-actions { display: flex; flex-direction: column; gap: 8px; }
+
+  .status-log {
+    border-top: 1px solid var(--cream);
+    padding: 10px 20px;
+    font-family: var(--mono);
+    font-size: .7rem;
+    color: var(--muted);
+    max-height: 130px;
+    overflow-y: auto;
+    flex-shrink: 0;
+    line-height: 1.9;
+  }
+  .log-line { display: flex; gap: 8px; }
+  .log-time { color: var(--rule); flex-shrink: 0; }
+  .log-ok   { color: var(--accent2); }
+  .log-err  { color: var(--accent); }
+  .log-info { color: #1a66c0; }
+
+  /* ── Scrollbar ── */
+  ::-webkit-scrollbar { width: 5px; }
+  ::-webkit-scrollbar-thumb { background: var(--cream); border-radius: 2px; }
+  ::-webkit-scrollbar-thumb:hover { background: var(--rule); }
+
+  @media (max-width: 800px) {
+    .workspace { grid-template-columns: 1fr; }
+    .sidebar { display: none; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="masthead-title">News<span>Desk</span></div>
+  <div class="masthead-meta">
+    <span class="live-dot"></span>AI Reporter Engine<br>
+    <span id="clock"></span>
+  </div>
+</header>
+
+<div class="workspace">
+
+  <!-- ── LEFT: Feed ── -->
+  <section class="feed">
+
+    <div class="feed-toolbar">
+      <label>Query →</label>
+      <!-- BUG FIX 8: Enter key submits -->
+      <input id="queryInput" class="query-input"
+             placeholder="e.g. Find latest AI news and post it to LinkedIn"
+             value="Find latest AI news and post it to LinkedIn" />
+      <!-- BUG FIX 4: id added so JS can disable/enable it -->
+      <button id="searchBtn" class="btn primary" onclick="runQuery()">Search</button>
+    </div>
+
+    <!-- Stage progress bar -->
+    <div class="stage-bar" id="stageBar" style="display:none">
+      <div class="stage" id="s-intent">Intent</div>
+      <div class="stage" id="s-search">Search</div>
+      <div class="stage" id="s-filter">Filter</div>
+      <div class="stage" id="s-summarize">Summarize</div>
+      <div class="stage" id="s-confirm">Confirm</div>
+      <div class="stage" id="s-format">Format</div>
+      <div class="stage" id="s-post">Post</div>
+    </div>
+
+    <!-- BUG FIX 7: Loading indicator with skeleton cards -->
+    <div class="loading-indicator" id="loadingIndicator">
+      <div class="spinner"></div>
+      <span class="loading-label" id="loadingLabel">Reporter is working…</span>
+    </div>
+
+    <!-- Confirmation banner -->
+    <div class="confirm-banner" id="confirmBanner">
+      <div class="confirm-title">📰 Ready to publish — review the articles above</div>
+      <div class="confirm-sub">The AI reporter has drafted a LinkedIn post from these stories. Post it now?</div>
+      <div class="confirm-actions">
+        <button class="btn success" onclick="confirmPost(true)">✓ Yes, Post to LinkedIn</button>
+        <button class="btn danger"  onclick="confirmPost(false)">✗ Cancel</button>
+      </div>
+    </div>
+
+    <!-- Articles -->
+    <div class="articles-scroll" id="articlesScroll">
+      <div class="empty-state">
+        <div class="big">✦</div>
+        <p>Type a query above and click <strong>Search</strong>.<br>
+           The AI reporter will fetch, filter, and summarise the latest tech news.</p>
+      </div>
+    </div>
+
+  </section>
+
+  <!-- ── RIGHT: Sidebar ── -->
+  <aside class="sidebar">
+    <div class="sidebar-header">
+      <div class="sidebar-label">LinkedIn Post Preview</div>
+      <div class="sidebar-title">Drafted by AI Reporter</div>
+    </div>
+
+    <div class="post-area">
+      <div class="post-preview" id="postPreview">Post will appear here after confirmation…</div>
+      <div class="word-counter" id="wordCount"></div>
+      <div class="post-actions" id="postActions" style="display:none">
+        <button class="btn" onclick="copyPost()">Copy Post Text</button>
+      </div>
+    </div>
+
+    <div class="status-log" id="statusLog">
+      <div class="log-line"><span class="log-time">--:--:--</span><span>Waiting for query…</span></div>
+    </div>
+  </aside>
+
+</div>
+
+<script>
+// ── Config ────────────────────────────────────────────────────────────────────
+const API_BASE = 'http://127.0.0.1:8000';
+
+// ── Service Worker ────────────────────────────────────────────────────────────
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('/sw.js').catch(() => {});
+}
+
+// ── Clock ─────────────────────────────────────────────────────────────────────
+(function startClock() {
+  const el = document.getElementById('clock');
+  const tick = () => { el.textContent = new Date().toUTCString().slice(17, 25) + ' UTC'; };
+  tick();
+  setInterval(tick, 1000);
+})();
+
+// ── State ─────────────────────────────────────────────────────────────────────
+let sessionId  = null;   // set when backend returns awaiting_confirmation=true
+let isFetching = false;  // BUG FIX 4: guard against double-submit
+
+// ── DOM helpers ───────────────────────────────────────────────────────────────
+const $  = id => document.getElementById(id);
+const STAGES = ['intent','search','filter','summarize','confirm','format','post'];
+
+function setStage(name, status) {
+  const el = $('s-' + name);
+  if (!el) return;
+  el.classList.remove('active', 'done', 'error');
+  if (status) el.classList.add(status);
+}
+
+function resetStages() {
+  STAGES.forEach(s => setStage(s, ''));
+}
+
+// Mark all stages up to (and including) `last` as done
+function markStagesDone(...names) {
+  names.forEach(n => setStage(n, 'done'));
+}
+
+function log(msg, cls = '') {
+  const box = $('statusLog');
+  const t   = new Date().toTimeString().slice(0, 8);
+  box.insertAdjacentHTML('beforeend',
+    `<div class="log-line"><span class="log-time">${t}</span><span class="${cls}">${escHtml(msg)}</span></div>`
+  );
+  box.scrollTop = box.scrollHeight;
+}
+
+function escHtml(s) {
+  return String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+// BUG FIX 4: centralised lock so Search can't fire twice
+function setFetching(active) {
+  isFetching = active;
+  $('searchBtn').disabled  = active;
+  $('queryInput').disabled = active;
+}
+
+// BUG FIX 7: loading indicator helpers
+function showLoading(label = 'Reporter is working…') {
+  $('loadingLabel').textContent = label;
+  $('loadingIndicator').classList.add('visible');
+}
+function hideLoading() {
+  $('loadingIndicator').classList.remove('visible');
+}
+
+function renderSkeletons(count = 3) {
+  const el = $('articlesScroll');
+  el.innerHTML = Array.from({ length: count }, () => `
+    <div class="skeleton-card">
+      <div class="skeleton-line title"></div>
+      <div class="skeleton-line"></div>
+      <div class="skeleton-line short"></div>
+    </div>`).join('');
+}
+
+function renderArticles(articles) {
+  const el = $('articlesScroll');
+  if (!articles || articles.length === 0) {
+    el.innerHTML = '<div class="empty-state"><div class="big">📭</div><p>No articles found. Try a different query.</p></div>';
+    return;
+  }
+  el.innerHTML = articles.map((art, i) => `
+    <div class="article-card">
+      <div class="article-index">Article ${i + 1} of ${articles.length}</div>
+      <div class="article-title">${escHtml(art.title || 'Untitled')}</div>
+      <span class="status-badge badge-new">Verified</span>
+      ${art.summary ? `<div class="article-summary">${escHtml(art.summary)}</div>` : ''}
+      <div class="article-source">Source: ${escHtml(art.source || art.url || '—')}</div>
+    </div>`).join('');
+}
+
+function showPost(text) {
+  const el = $('postPreview');
+  el.textContent = text;          // textContent is safe — no XSS risk
+  el.classList.add('has-content');
+  $('wordCount').textContent = `${text.trim().split(/\s+/).length} words`;
+  $('postActions').style.display = '';
+}
+
+function copyPost() {
+  navigator.clipboard.writeText($('postPreview').textContent)
+    .then(() => log('Copied to clipboard ✓', 'log-ok'))
+    .catch(() => log('Copy failed — please select and copy manually', 'log-err'));
+}
+
+// ── Main query ────────────────────────────────────────────────────────────────
+async function runQuery() {
+  // BUG FIX 4: prevent double-fire
+  if (isFetching) return;
+
+  const query = $('queryInput').value.trim();
+  if (!query) return;
+
+  // Reset UI
+  $('articlesScroll').innerHTML = '';
+  $('confirmBanner').classList.remove('visible');
+  $('postPreview').textContent = 'Processing query…';
+  $('postPreview').classList.remove('has-content');
+  $('wordCount').textContent = '';
+  $('postActions').style.display = 'none';
+  $('stageBar').style.display = '';
+  resetStages();
+  sessionId = null;
+
+  setFetching(true);                  // BUG FIX 4: lock
+  showLoading('Classifying intent…'); // BUG FIX 7: show spinner
+  renderSkeletons();                  // BUG FIX 7: skeleton cards
+  setStage('intent', 'active');
+  log('New query: ' + query, 'log-info');
+
+  try {
+    // BUG FIX 7: update label as we progress — it's a single long request
+    // so we show activity feedback during the wait
+    const labelInterval = (() => {
+      const msgs = [
+        'Classifying intent…',
+        'Searching for news…',
+        'Filtering articles…',
+        'Summarising with AI…',
+        'Almost ready…',
+      ];
+      let i = 0;
+      return setInterval(() => {
+        i = Math.min(i + 1, msgs.length - 1);
+        $('loadingLabel').textContent = msgs[i];
+      }, 8000);  // advance label every 8 s (LLM calls are slow)
+    })();
+
+    const controller = new AbortController();
+    const timeoutId  = setTimeout(() => controller.abort(), 125_000); // 125 s
+
+    const resp = await fetch(`${API_BASE}/query`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ query }),
+      signal: controller.signal,
+    });
+
+    clearTimeout(timeoutId);
+    clearInterval(labelInterval);
+    hideLoading();
+
+    if (!resp.ok) {
+      const detail = await resp.json().catch(() => ({ detail: resp.statusText }));
+      throw new Error(detail.detail || `HTTP ${resp.status}`);
+    }
+
+    const data = await resp.json();
+    setStage('intent', 'done');
+    log('Intent classified', 'log-ok');
+
+    const hasPreview    = Array.isArray(data.news_preview) && data.news_preview.length > 0;
+    const needsConfirm  = data.awaiting_confirmation === true;
+
+    if (needsConfirm) {
+      markStagesDone('search', 'filter', 'summarize');
+      setStage('confirm', 'active');
+
+      if (hasPreview) {
+        renderArticles(data.news_preview);
+        log(`${data.news_preview.length} articles ready for review`, 'log-ok');
+      }
+
+      sessionId = data.session_id;
+      $('confirmBanner').classList.add('visible');
+      log('⚑ Waiting for your confirmation…', 'log-info');
+      // Keep buttons enabled so user can click Yes/No
+      setFetching(false);
+
+    } else if (hasPreview) {
+      // news_query — just show articles, no post
+      markStagesDone('search', 'filter', 'summarize', 'confirm');
+      renderArticles(data.news_preview);
+      log(`${data.news_preview.length} articles ready`, 'log-ok');
+      $('postPreview').textContent = 'News query only — no post created.\nUse "Find X and post it to LinkedIn" to draft a post.';
+      $('postPreview').classList.add('has-content');
+      setTimeout(() => { $('stageBar').style.display = 'none'; }, 2000);
+      setFetching(false);
+
+    } else {
+      // post_request — pipeline already finished
+      markStagesDone('search', 'filter', 'summarize', 'confirm', 'format', 'post');
+      showPost(data.response);
+      log('✓ Post published directly', 'log-ok');
+      setTimeout(() => { $('stageBar').style.display = 'none'; }, 2000);
+      setFetching(false);
+    }
+
+  } catch (err) {
+    hideLoading();
+    clearInterval(0); // belt-and-suspenders
+    setStage('intent', 'error');
+    log(`Error: ${err.name === 'AbortError' ? 'Request timed out (>2 min)' : err.message}`, 'log-err');
+    $('articlesScroll').innerHTML = '<div class="empty-state"><div class="big">⚠</div><p>Something went wrong. Check the console and ensure the backend is running.</p></div>';
+    $('postPreview').textContent = 'An error occurred.';
+    setFetching(false);
+  }
+}
+
+// ── Confirmation ──────────────────────────────────────────────────────────────
+async function confirmPost(yes) {
+  if (!sessionId) {
+    log('Error: no active session — run a new query', 'log-err');
+    return;
+  }
+
+  // Prevent accidental double-click on confirm buttons
+  document.querySelectorAll('.confirm-actions .btn').forEach(b => b.disabled = true);
+  $('confirmBanner').classList.remove('visible');
+
+  if (!yes) {
+    setStage('confirm', 'error');
+    log('Posting cancelled by user', 'log-err');
+    $('postPreview').textContent = 'Posting cancelled.\nSummaries are saved above.';
+    $('postPreview').classList.add('has-content');
+    // Still call backend so it cleans up the session
+    fetch(`${API_BASE}/confirm`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ session_id: sessionId, confirmed: false }),
+    }).catch(() => {});  // fire-and-forget; we don't need the response
+    sessionId = null;
+    document.querySelectorAll('.confirm-actions .btn').forEach(b => b.disabled = false);
+    return;
+  }
+
+  // User said Yes
+  setStage('confirm', 'done');
+  setStage('format', 'active');
+  showLoading('Drafting post…');       // BUG FIX 7
+  log('Formatting post in reporter voice…');
+
+  try {
+    const controller = new AbortController();
+    const timeoutId  = setTimeout(() => controller.abort(), 125_000);
+
+    const resp = await fetch(`${API_BASE}/confirm`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ session_id: sessionId, confirmed: true }),
+      signal: controller.signal,
+    });
+
+    clearTimeout(timeoutId);
+    hideLoading();
+    sessionId = null;
+
+    if (!resp.ok) {
+      const detail = await resp.json().catch(() => ({ detail: resp.statusText }));
+      throw new Error(detail.detail || `HTTP ${resp.status}`);
+    }
+
+    const data = await resp.json();
+
+    setStage('format', 'done');
+    setStage('post', data.success ? 'done' : 'error');
+
+    if (data.success) {
+      showPost(data.response);
+      log('✓ Published to LinkedIn', 'log-ok');
+    } else {
+      log('Post failed — see response below', 'log-err');
+      $('postPreview').textContent = data.response;
+      $('postPreview').classList.add('has-content');
+    }
+
+    setTimeout(() => { $('stageBar').style.display = 'none'; }, 1500);
+
+  } catch (err) {
+    hideLoading();
+    setStage('post', 'error');
+    log(`Confirm error: ${err.name === 'AbortError' ? 'Timed out' : err.message}`, 'log-err');
+  } finally {
+    document.querySelectorAll('.confirm-actions .btn').forEach(b => b.disabled = false);
+  }
+}
+
+// BUG FIX 8: Enter key on input fires runQuery
+document.getElementById('queryInput').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') runQuery();
+});
+</script>
+</body>
+</html>
