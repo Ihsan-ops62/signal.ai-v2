@@ -29,13 +29,16 @@ class SummarizerAgent:
         if len(content) > 3000:
             content = content[:3000] + "…"
 
+        # Added strict XML boundaries to avoid prompt injection from untrusted web data
         prompt = f"""You are a professional tech journalist. 
-Summarize the news article below in exactly 2-3 sentences.
+Summarize the news article provided in the <article> tags below in exactly 2-3 sentences.
 Focus on: (1) what happened, (2) why it matters, (3) any notable figures or numbers.
 Write in plain English. Do NOT start with "This article" or "The article".
 
-Title: {title}
-Content: {content}
+<article>
+<title>{title}</title>
+<content>{content}</content>
+</article>
 
 Summary:"""
 

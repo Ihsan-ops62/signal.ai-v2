@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 from typing import Optional
 
 from database.mongodb_client import MongoDB
-from database.models import UserQuery, NewsArticle, LinkedInPost
+from database.models import UserQuery, NewsArticle
 
 logger = logging.getLogger(__name__)
 
@@ -25,12 +25,10 @@ class MemoryAgent:
             created_at=_now_utc(),
         )
         try:
-            # Run in background - don't block the workflow
             result = await MongoDB.get_collection("queries").insert_one(doc.model_dump())
             return str(result.inserted_id) if result else None
         except Exception as exc:
             logger.warning("Could not store query (non-fatal): %s", exc)
-            # Return a dummy ID so workflow continues
             return None
 
     @staticmethod
@@ -58,25 +56,32 @@ class MemoryAgent:
     async def store_post_result(
         query_id: Optional[str],
         content: str,
-        linkedin_result: dict,
+        post_result: dict,
     ) -> None:
-        """
-        Persist the outcome of a LinkedIn post attempt.
+        """Persist the outcome of a social media post attempt.
 
-        Uses update_one + upsert=True for successful posts so that
-        re-running the workflow never creates duplicate records. Failed posts
-        (post_id = None) are inserted directly to avoid null-key conflicts
-        on a sparse unique index.
+        Works for both LinkedIn and Facebook. Uses ``platform_post_id`` as the
+        deduplication key so re-running the workflow never creates duplicate
+        records for the same live post.
+
+        Args:
+            query_id:    MongoDB ID of the originating user query.
+            content:     The formatted post text that was (or was attempted to be) published.
+            post_result: Dict returned by the posting agent — must include keys:
+                         ``success`` (bool), ``post_id`` (str|None),
+                         ``platform`` ('linkedin'|'facebook'), ``error`` (str|None).
         """
-        post_id = linkedin_result.get("post_id")
-        status = "success" if linkedin_result.get("success") else "failed"
+        post_id = post_result.get("post_id")
+        platform = post_result.get("platform", "linkedin")
+        status = "success" if post_result.get("success") else "failed"
 
         doc = {
             "user_query_id": query_id,
             "content": content,
-            "linkedin_post_id": post_id,
+            "platform": platform,               # NEW: track which network was used
+            "platform_post_id": post_id,        # renamed from linkedin_post_id
             "status": status,
-            "error": linkedin_result.get("error"),
+            "error": post_result.get("error"),
             "created_at": _now_utc(),
         }
 
@@ -84,16 +89,16 @@ class MemoryAgent:
 
         try:
             if post_id:
-                # Real post ID → safe unique key for upsert
+                # Real post ID — safe unique key for upsert across both platforms
                 await collection.update_one(
-                    {"linkedin_post_id": post_id},
+                    {"platform_post_id": post_id, "platform": platform},
                     {"$set": doc},
                     upsert=True,
                 )
             else:
-                # Failed post → drop the null ID field to avoid sparse-index conflict
-                doc_no_null_id = {k: v for k, v in doc.items() if k != "linkedin_post_id"}
-                await collection.insert_one(doc_no_null_id)
+                # Failed post — drop null ID to avoid sparse-index conflict
+                doc_no_null = {k: v for k, v in doc.items() if k != "platform_post_id"}
+                await collection.insert_one(doc_no_null)
 
         except Exception as exc:
             logger.error("Failed to store post result (non-fatal): %s", exc)

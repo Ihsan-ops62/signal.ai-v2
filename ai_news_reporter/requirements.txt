@@ -1,8 +1,13 @@
 fastapi
 uvicorn[standard]
-langgraph
-langchain
-langchain-ollama
-motor
 pydantic
+python-multipart
+httpx
+langchain-ollama
+langgraph
+motor
+feedparser
+edge-tts
+faster-whisper
+ctranslate2
 python-dotenv

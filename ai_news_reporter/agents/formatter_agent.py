@@ -6,33 +6,40 @@ from services.ollama_service import OllamaService
 
 logger = logging.getLogger(__name__)
 
-# ── Reporter personas (tuned for cleaner output) ─────────────────────────────
-_REPORTER_PERSONAS = [
+# ── LinkedIn reporter personas ────────────────────────────────────────────────
+_LINKEDIN_PERSONAS = [
     {
-        "name": "Alex Chen – senior tech reporter",
+        "name": "Alex – Authentic Tech Professional",
         "style": (
-            "Professional, concise, evidence-driven. Use short paragraphs. "
-            "Avoid emojis entirely. No exclamation marks. Sound like a WSJ tech columnist."
+            "Write exactly like a human sharing an insightful thought with their professional network. "
+            "Start with a conversational hook (e.g., 'I was just reading about...'). "
+            "Use natural paragraph breaks. Synthesize the news into a flowing thought rather than a list. "
+            "Do not sound robotic or use over-the-top corporate buzzwords."
         ),
     },
     {
-        "name": "Priya Nair – startup beat writer",
+        "name": "Jordan – Curious Engineer",
         "style": (
-            "Conversational but polished. Use at most one emoji per post, and only if it adds clarity. "
-            "Avoid over-enthusiasm. Sound like a TechCrunch editor."
-        ),
-    },
-    {
-        "name": "Marcus Webb – engineering commentator",
-        "style": (
-            "Precise, slightly technical, no hype. Zero emojis. No exclamation marks. "
-            "Sound like a lead engineer sharing insights on LinkedIn."
+            "Friendly, low-key, and analytical. Write like a real developer sharing a quick observation about "
+            "some cool news they found today. Avoid excessive hype. Use standard punctuation and natural spacing."
         ),
     },
 ]
 
-_SKIP_PREFIXES = ("here is", "here's", "linkedin post:", "post:", "---", "```", "sure", "of course")
-_MAX_WORDS = 250
+# ── Facebook writer personas ──────────────────────────────────────────────────
+_FACEBOOK_PERSONAS = [
+    {
+        "name": "Sam – Tech Enthusiast Friend",
+        "style": (
+            "Casual, relaxed, and everyday tone. Like posting an interesting article link on your personal feed. "
+            "Talk directly to your friends. A couple of emojis are great. No corporate speak."
+        ),
+    },
+]
+
+_SKIP_PREFIXES = ("here is", "here's", "linkedin post:", "facebook post:", "post:", "---", "```", "sure", "of course")
+_MAX_WORDS_LINKEDIN = 250
+_MAX_WORDS_FACEBOOK = 120
 
 
 class FormatterAgent:
@@ -41,41 +48,77 @@ class FormatterAgent:
 
     async def format_for_linkedin(self, summaries: list[str]) -> str:
         if not summaries:
-            logger.warning("No summaries provided to FormatterAgent")
+            logger.warning("No summaries provided to FormatterAgent (LinkedIn)")
             return ""
 
-        persona = random.choice(_REPORTER_PERSONAS)
+        persona = random.choice(_LINKEDIN_PERSONAS)
         combined = "\n\n".join(f"• {s.strip()}" for s in summaries if s.strip())
 
         prompt = f"""You are {persona['name']}.
-Writing style: {persona['style']}
+Voice/Style: {persona['style']}
 
-Write ONE LinkedIn post based on the tech-news bullets below.
+Write ONE natural, human-sounding LinkedIn post based on the news items provided in the <news> tags below.
 
 HARD RULES:
-1. OUTPUT ONLY the post text. No intro, no "Here is…", no title.
-2. Hook: first sentence must state the most important fact or trend. Avoid questions as hooks.
-3. Body: 3–4 short paragraphs (1–2 sentences each). Blank line between them.
-4. Voice: human, direct, no buzzwords ("game-changer", "revolutionary", "disruptive"). Contractions are fine.
-5. Emojis: maximum 1 emoji in the entire post. Preferably none.
-6. Punctuation: no exclamation marks (except in quoted speech). Use periods and commas normally.
-7. Close with ONE specific, open-ended question that professionals would answer.
-8. Hashtags: exactly 3 relevant hashtags on the last line, separated by spaces.
-9. Max 250 words.
+1. OUTPUT ONLY the post text. No intro, no "Here is the post", no title.
+2. Hook: Must sound like a real person making an observation.
+3. Flow: Do not just list the bullet points. Weave them together into a short, coherent thought.
+4. Voice: Authentic, direct, conversational. NO buzzwords ("game-changer", "revolutionary", "delve").
+5. Format: Use line breaks between thoughts.
+6. Punctuation: Keep it normal. Avoid exclamation marks unless truly needed. 
+7. End with an engaging, casual question.
+8. Add 2-3 hashtags at the very bottom.
+9. Max 200 words.
 
-Tech news:
+<news>
 {combined}
+</news>
 
 Post:"""
 
         raw = await self.llm.generate(prompt, temperature=0.65)
-        post = self._clean_output(raw)
+        post = self._clean_output(raw, max_words=_MAX_WORDS_LINKEDIN)
         post = self._post_process(post)
         logger.info("Formatted LinkedIn post (%d words)", len(post.split()))
         return post
 
+    async def format_for_facebook(self, summaries: list[str]) -> str:
+        if not summaries:
+            logger.warning("No summaries provided to FormatterAgent (Facebook)")
+            return ""
+
+        persona = random.choice(_FACEBOOK_PERSONAS)
+        combined = "\n\n".join(f"• {s.strip()}" for s in summaries if s.strip())
+
+        prompt = f"""You are {persona['name']}.
+Voice/Style: {persona['style']}
+
+Write ONE natural Facebook post based on the news items provided in the <news> tags below.
+
+HARD RULES:
+1. OUTPUT ONLY the post text. No intro, no "Here is...", no title.
+2. Make it sound like a quick, interesting update shared with friends.
+3. Keep it SHORT — maximum 100 words. 
+4. Plain, everyday language. 
+5. 1-2 emojis max.
+6. End with a simple, friendly question.
+7. NO hashtags.
+
+<news>
+{combined}
+</news>
+
+Post:"""
+
+        raw = await self.llm.generate(prompt, temperature=0.7)
+        post = self._clean_output(raw, max_words=_MAX_WORDS_FACEBOOK)
+        post = self._post_process(post)
+        post = re.sub(r'\s*#\w+', '', post).strip()
+        logger.info("Formatted Facebook post (%d words)", len(post.split()))
+        return post
+
     @staticmethod
-    def _clean_output(text: str) -> str:
+    def _clean_output(text: str, max_words: int = _MAX_WORDS_LINKEDIN) -> str:
         lines = text.strip().splitlines()
         while lines:
             norm = lines[0].lower().strip().lstrip("# ")
@@ -87,31 +130,23 @@ Post:"""
             lines.pop()
         cleaned = "\n".join(lines).strip()
         words = cleaned.split()
-        if len(words) > _MAX_WORDS:
-            trimmed = " ".join(words[:_MAX_WORDS])
+        if len(words) > max_words:
+            trimmed = " ".join(words[:max_words])
             for p in (".", "!", "?"):
                 idx = trimmed.rfind(p)
                 if idx > 0:
-                    trimmed = trimmed[:idx+1]
+                    trimmed = trimmed[: idx + 1]
                     break
             cleaned = trimmed
         return cleaned
 
     @staticmethod
     def _post_process(text: str) -> str:
-        """Clean up common LLM artifacts."""
-        # Remove duplicate consecutive emojis
         text = re.sub(r'([\U00010000-\U0010FFFF])\1+', r'\1', text)
-        # Remove spaces before punctuation
         text = re.sub(r'\s+([,.!?:])', r'\1', text)
-        # Replace multiple exclamation marks with a single period
         text = re.sub(r'!{2,}', '.', text)
-        # Remove exclamation marks entirely (except if part of URL or quoted)
         text = re.sub(r'(?<![a-zA-Z])!(?![a-zA-Z])', '.', text)
-        # Ensure single spaces after periods
         text = re.sub(r'\.(?=[A-Z])', r'. ', text)
-        # Remove trailing spaces
         text = re.sub(r' +$', '', text, flags=re.MULTILINE)
-        # Remove double periods
         text = re.sub(r'\.\.', '.', text)
         return text

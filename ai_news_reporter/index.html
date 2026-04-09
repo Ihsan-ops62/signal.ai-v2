@@ -1,786 +1,790 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>NewsDesk · AI Reporter</title>
-<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,700;1,400&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@300;400;500;600&display=swap" rel="stylesheet" />
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>Signal.AI — Voice Tech Reporter</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=Roboto+Mono:wght@400;500&display=swap" rel="stylesheet"/>
+
 <style>
-  :root {
-    --ink:     #0f0e0c;
-    --paper:   #f5f0e8;
-    --cream:   #ede8dc;
-    --rule:    #c8b89a;
-    --accent:  #c0392b;
-    --accent2: #1a6b3c;
-    --muted:   #6b6256;
-    --card-bg: #faf7f2;
-    --mono:    'IBM Plex Mono', monospace;
-    --serif:   'Playfair Display', Georgia, serif;
-    --sans:    'IBM Plex Sans', sans-serif;
-  }
+/* ── Reset ──────────────────────────────────────────────────── */
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
 
-  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root{
+  /* Professional Typography */
+  --ff-head:'Inter', system-ui, sans-serif;
+  --ff-body:'Inter', system-ui, sans-serif;
+  --ff-mono:'Roboto Mono', 'Courier New', monospace;
 
-  body {
-    background: var(--paper);
-    color: var(--ink);
-    font-family: var(--sans);
-    min-height: 100vh;
-    display: grid;
-    grid-template-rows: auto 1fr;
-  }
+  /* Dark Professional Theme Colors */
+  --bg:        #000000;
+  --surface:   #0a0a0a;
+  --surface-2: #141414;
 
-  /* ── Masthead ── */
-  header {
-    border-bottom: 3px double var(--ink);
-    padding: 18px 32px 14px;
-    display: flex;
-    align-items: baseline;
-    gap: 20px;
-    background: var(--paper);
-    position: sticky;
-    top: 0;
-    z-index: 100;
-  }
-  .masthead-title { font-family: var(--serif); font-size: 2rem; letter-spacing: -.5px; line-height: 1; }
-  .masthead-title span { color: var(--accent); font-style: italic; }
-  .masthead-meta {
-    font-family: var(--mono);
-    font-size: .68rem;
-    color: var(--muted);
-    text-transform: uppercase;
-    letter-spacing: .08em;
-    border-left: 1px solid var(--rule);
-    padding-left: 16px;
-    line-height: 1.5;
-  }
-  .live-dot {
-    display: inline-block;
-    width: 7px; height: 7px;
-    background: var(--accent);
-    border-radius: 50%;
-    margin-right: 5px;
-    animation: blink 1.4s infinite;
-  }
-  @keyframes blink { 0%,100%{opacity:1} 50%{opacity:.2} }
+  --border:    #262626;
+  --border-md: #404040;
+  --border-dk: #525252;
 
-  /* ── Layout ── */
-  .workspace {
-    display: grid;
-    grid-template-columns: 1fr 380px;
-    height: calc(100vh - 70px);
-  }
+  --t1: #f5f5f5; /* Primary text */
+  --t2: #a3a3a3; /* Secondary text */
+  --t3: #737373; /* Muted text */
 
-  /* ── Feed (left) ── */
-  .feed {
-    border-right: 1px solid var(--rule);
-    display: flex;
-    flex-direction: column;
-    overflow: hidden;
-  }
+  /* Sleek Accents */
+  --green:     #34d399;
+  --green-lt:  #6ee7b7;
+  --green-bg:  rgba(52, 211, 153, 0.15);
+  --green-bd:  rgba(52, 211, 153, 0.3);
 
-  .feed-toolbar {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    padding: 12px 24px;
-    border-bottom: 1px solid var(--cream);
-    background: var(--card-bg);
-    flex-shrink: 0;
-  }
-  .feed-toolbar label {
-    font-family: var(--mono);
-    font-size: .72rem;
-    color: var(--muted);
-    text-transform: uppercase;
-    letter-spacing: .06em;
-    white-space: nowrap;
-  }
-  .query-input {
-    flex: 1;
-    border: 1px solid var(--rule);
-    background: var(--paper);
-    font-family: var(--sans);
-    font-size: .92rem;
-    padding: 8px 14px;
-    outline: none;
-    color: var(--ink);
-    transition: border-color .2s;
-  }
-  .query-input:focus { border-color: var(--ink); }
-  .query-input::placeholder { color: var(--rule); }
-  /* BUG FIX 4 support: visually reflect disabled state on input too */
-  .query-input:disabled { opacity: .5; cursor: not-allowed; }
+  --blue:      #60a5fa;
+  --blue-bg:   rgba(96, 165, 250, 0.15);
+  --blue-bd:   rgba(96, 165, 250, 0.3);
 
-  .btn {
-    font-family: var(--mono);
-    font-size: .75rem;
-    font-weight: 500;
-    letter-spacing: .06em;
-    text-transform: uppercase;
-    border: 1.5px solid var(--ink);
-    background: transparent;
-    color: var(--ink);
-    padding: 8px 18px;
-    cursor: pointer;
-    transition: background .15s, color .15s;
-    white-space: nowrap;
-  }
-  .btn:hover  { background: var(--ink); color: var(--paper); }
-  .btn:active { opacity: .8; }
-  .btn.primary { background: var(--ink); color: var(--paper); }
-  .btn.primary:hover { background: #333; }
-  .btn.danger  { border-color: var(--accent); color: var(--accent); }
-  .btn.danger:hover  { background: var(--accent);  color: #fff; }
-  .btn.success { border-color: var(--accent2); color: var(--accent2); }
-  .btn.success:hover { background: var(--accent2); color: #fff; }
-  /* BUG FIX 4: proper disabled state */
-  .btn:disabled { opacity: .38; cursor: not-allowed; pointer-events: none; }
+  --purple:    #a78bfa;
+  --purple-bg: rgba(167, 139, 250, 0.15);
+  --purple-bd: rgba(167, 139, 250, 0.3);
 
-  /* ── Stage bar ── */
-  .stage-bar {
-    display: flex;
-    gap: 6px;
-    padding: 8px 24px;
-    border-bottom: 1px solid var(--cream);
-    background: var(--card-bg);
-    flex-shrink: 0;
-    flex-wrap: wrap;
-  }
-  .stage {
-    font-family: var(--mono);
-    font-size: .65rem;
-    text-transform: uppercase;
-    letter-spacing: .07em;
-    padding: 3px 10px;
-    border: 1px solid var(--cream);
-    color: var(--rule);
-    transition: all .3s;
-  }
-  .stage.active { border-color: #d4a81a; color: #8a6a0a; background: #fffbf0; }
-  .stage.done   { border-color: var(--accent2); color: var(--accent2); background: #f0fdf4; }
-  .stage.error  { border-color: var(--accent);  color: var(--accent);  background: #fdf0f0; }
+  --red:       #f87171;
+  --red-bg:    rgba(248, 113, 113, 0.15);
+  --red-bd:    rgba(248, 113, 113, 0.3);
+  --mic-red:   #ef4444;
 
-  /* ── BUG FIX 7: Loading skeleton shown while LLM is working ── */
-  .loading-indicator {
-    display: none;
-    align-items: center;
-    gap: 12px;
-    padding: 20px 24px;
-    flex-shrink: 0;
-    border-bottom: 1px solid var(--cream);
-  }
-  .loading-indicator.visible { display: flex; }
-  .spinner {
-    width: 16px; height: 16px;
-    border: 2px solid var(--cream);
-    border-top-color: var(--ink);
-    border-radius: 50%;
-    animation: spin .7s linear infinite;
-    flex-shrink: 0;
-  }
-  @keyframes spin { to { transform: rotate(360deg); } }
-  .loading-label {
-    font-family: var(--mono);
-    font-size: .72rem;
-    color: var(--muted);
-    text-transform: uppercase;
-    letter-spacing: .06em;
-  }
-  /* skeleton cards while loading */
-  .skeleton-card {
-    background: var(--card-bg);
-    border: 1px solid var(--cream);
-    padding: 16px 18px;
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-  }
-  .skeleton-line {
-    height: 12px;
-    background: linear-gradient(90deg, var(--cream) 25%, var(--paper) 50%, var(--cream) 75%);
-    background-size: 200% 100%;
-    animation: shimmer 1.4s infinite;
-    border-radius: 2px;
-  }
-  .skeleton-line.title { height: 18px; width: 75%; }
-  .skeleton-line.short { width: 40%; }
-  @keyframes shimmer { from{background-position:200% 0} to{background-position:-200% 0} }
+  --topbar-h:56px; --left-w:240px; --right-w:260px;
+  --radius:8px; --radius-lg:12px; --radius-sm:6px;
+}
 
-  /* ── Confirmation banner ── */
-  .confirm-banner {
-    background: #fffbf0;
-    border: 1.5px solid #d4a81a;
-    margin: 0 24px;
-    padding: 14px 18px;
-    display: none;
-    flex-direction: column;
-    gap: 10px;
-    animation: slideIn .2s ease;
-    flex-shrink: 0;
-  }
-  .confirm-banner.visible { display: flex; }
-  .confirm-title { font-family: var(--serif); font-size: 1rem; font-style: italic; }
-  .confirm-sub   { font-size: .82rem; color: var(--muted); line-height: 1.5; }
-  .confirm-actions { display: flex; gap: 10px; }
+html,body{height:100%;overflow:hidden;}
+body{background:var(--bg);color:var(--t1);font-family:var(--ff-body);font-size:14px;line-height:1.6;-webkit-font-smoothing:antialiased;}
 
-  /* ── Articles scroll ── */
-  .articles-scroll {
-    flex: 1;
-    overflow-y: auto;
-    padding: 20px 24px;
-    display: flex;
-    flex-direction: column;
-    gap: 16px;
-  }
-  @keyframes slideIn { from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:none} }
+/* ── App shell ─────────────────────────────────────────────── */
+.app{
+  height:100vh;
+  display:grid;
+  grid-template-rows:var(--topbar-h) 1fr;
+  grid-template-columns:var(--left-w) 1fr var(--right-w);
+  grid-template-areas:"top top top" "left main right";
+}
 
-  .empty-state {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    text-align: center;
-    gap: 10px;
-    color: var(--muted);
-    padding: 60px;
-  }
-  .empty-state .big { font-family: var(--serif); font-size: 3.5rem; opacity: .25; }
-  .empty-state p { font-size: .88rem; line-height: 1.7; max-width: 340px; }
+/* ── Top bar ───────────────────────────────────────────────── */
+.topbar{
+  grid-area:top;
+  background:var(--surface);
+  border-bottom:1px solid var(--border);
+  display:flex;align-items:center;justify-content:space-between;
+  padding:0 24px;z-index:10;
+}
+.logo-group{display:flex;align-items:baseline;gap:10px;}
+.logo{font-family:var(--ff-head);font-size:20px;font-weight:600;letter-spacing:-0.5px;color:var(--t1);}
+.logo em{color:var(--green);font-style:normal;}
+.tagline{font-family:var(--ff-mono);font-size:10px;letter-spacing:2px;text-transform:uppercase;color:var(--t3);}
+.topbar-right{display:flex;align-items:center;gap:12px;}
 
-  .article-card {
-    background: var(--card-bg);
-    border: 1px solid var(--cream);
-    padding: 16px 18px;
-    display: grid;
-    grid-template-columns: 1fr auto;
-    gap: 8px;
-    animation: slideIn .25s ease;
-  }
-  .article-card:hover { border-color: var(--rule); }
-  .article-index {
-    font-family: var(--mono);
-    font-size: .65rem;
-    color: var(--rule);
-    grid-column: 1 / -1;
-    margin-bottom: 2px;
-    text-transform: uppercase;
-    letter-spacing: .08em;
-  }
-  .article-title {
-    font-family: var(--serif);
-    font-size: 1.05rem;
-    font-weight: 700;
-    line-height: 1.35;
-    grid-column: 1;
-  }
-  .article-summary {
-    font-size: .86rem;
-    line-height: 1.65;
-    color: #3a3530;
-    grid-column: 1 / -1;
-    margin-top: 6px;
-  }
-  .article-source {
-    font-family: var(--mono);
-    font-size: .65rem;
-    color: var(--muted);
-    text-transform: uppercase;
-    letter-spacing: .06em;
-    grid-column: 1 / -1;
-    border-top: 1px solid var(--cream);
-    padding-top: 8px;
-    margin-top: 4px;
-  }
-  .status-badge {
-    font-family: var(--mono);
-    font-size: .6rem;
-    text-transform: uppercase;
-    letter-spacing: .08em;
-    padding: 3px 8px;
-    border: 1px solid;
-    align-self: start;
-  }
-  .badge-new { border-color: var(--accent2); color: var(--accent2); }
+.live-pill{display:flex;align-items:center;gap:6px;font-family:var(--ff-mono);font-size:10px;letter-spacing:1px;text-transform:uppercase;color:var(--green);background:var(--green-bg);border:1px solid var(--green-bd);padding:4px 10px;border-radius:20px;}
+.live-dot{width:6px;height:6px;border-radius:50%;background:var(--green);animation:livepulse 2s infinite;}
+@keyframes livepulse{0%,100%{opacity:1;}50%{opacity:0.3;}}
 
-  /* ── Sidebar (right) ── */
-  .sidebar { display: flex; flex-direction: column; overflow: hidden; }
-  .sidebar-header {
-    padding: 14px 20px 12px;
-    border-bottom: 1px solid var(--cream);
-    background: var(--card-bg);
-    flex-shrink: 0;
-  }
-  .sidebar-label {
-    font-family: var(--mono);
-    font-size: .68rem;
-    text-transform: uppercase;
-    letter-spacing: .1em;
-    color: var(--muted);
-  }
-  .sidebar-title { font-family: var(--serif); font-size: 1.1rem; margin-top: 2px; }
-  .post-area {
-    flex: 1;
-    overflow-y: auto;
-    padding: 16px 20px;
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
-  }
+.model-chip{font-family:var(--ff-mono);font-size:10px;color:var(--t3);border:1px solid var(--border-md);padding:3px 9px;border-radius:20px;background:var(--surface-2);}
 
-  /* BUG FIX 6: remove display:flex from base state — it fights white-space:pre-wrap.
-     Use display:block always. Center the placeholder text with CSS instead. */
-  .post-preview {
-    background: var(--paper);
-    border: 1px solid var(--cream);
-    border-left: 3px solid var(--ink);
-    padding: 14px 16px;
-    font-size: .86rem;
-    line-height: 1.75;
-    white-space: pre-wrap;
-    word-break: break-word;
-    min-height: 160px;
-    font-family: var(--sans);
-    color: var(--muted);
-    /* placeholder centering — no flex needed */
-    display: grid;
-    place-items: center;
-    text-align: center;
-  }
-  .post-preview.has-content {
-    color: var(--ink);
-    display: block;       /* ← back to block so pre-wrap wraps correctly */
-    text-align: left;
-  }
+/* Voice mode toggle in topbar */
+.voice-toggle{display:flex;align-items:center;gap:8px;font-family:var(--ff-mono);font-size:11px;color:var(--t2);cursor:pointer;user-select:none;}
+.toggle-track{width:36px;height:20px;border-radius:10px;background:var(--border-md);position:relative;transition:background .2s;}
+.toggle-track.on{background:var(--green);}
+.toggle-thumb{position:absolute;top:2px;left:2px;width:16px;height:16px;border-radius:50%;background:#fff;transition:left .2s;box-shadow:0 1px 3px rgba(0,0,0,.2);}
+.toggle-track.on .toggle-thumb{left:18px;}
 
-  .word-counter { font-family: var(--mono); font-size: .65rem; color: var(--rule); text-align: right; }
-  .post-actions { display: flex; flex-direction: column; gap: 8px; }
+/* ── Sidebars ──────────────────────────────────────────────── */
+.sidebar-left{grid-area:left;background:var(--surface);border-right:1px solid var(--border);display:flex;flex-direction:column;overflow-y:auto;}
+.sidebar-right{grid-area:right;background:var(--surface);border-left:1px solid var(--border);display:flex;flex-direction:column;overflow-y:auto;}
 
-  .status-log {
-    border-top: 1px solid var(--cream);
-    padding: 10px 20px;
-    font-family: var(--mono);
-    font-size: .7rem;
-    color: var(--muted);
-    max-height: 130px;
-    overflow-y: auto;
-    flex-shrink: 0;
-    line-height: 1.9;
-  }
-  .log-line { display: flex; gap: 8px; }
-  .log-time { color: var(--rule); flex-shrink: 0; }
-  .log-ok   { color: var(--accent2); }
-  .log-err  { color: var(--accent); }
-  .log-info { color: #1a66c0; }
+.sec-label{font-family:var(--ff-mono);font-size:10px;letter-spacing:1.5px;text-transform:uppercase;color:var(--t3);padding:18px 16px 8px;border-bottom:1px solid var(--border);}
 
-  /* ── Scrollbar ── */
-  ::-webkit-scrollbar { width: 5px; }
-  ::-webkit-scrollbar-thumb { background: var(--cream); border-radius: 2px; }
-  ::-webkit-scrollbar-thumb:hover { background: var(--rule); }
+/* Pipeline */
+.pipeline{padding:12px 16px 8px;}
+.fstep{display:flex;align-items:flex-start;gap:12px;padding:6px 2px;position:relative;}
+.fstep:not(:last-child)::after{content:'';position:absolute;left:11px;top:28px;width:1px;height:16px;background:var(--border-md);}
+.fstep-dot{width:22px;height:22px;border-radius:50%;border:1px solid var(--border-md);display:flex;align-items:center;justify-content:center;flex-shrink:0;font-family:var(--ff-mono);font-size:10px;color:var(--t3);background:var(--surface-2);margin-top:1px;transition:all .25s;}
+.fstep-dot.done{border-color:var(--green-bd);background:var(--green-bg);color:var(--green);}
+.fstep-dot.active{border-color:var(--blue-bd);background:var(--blue-bg);color:var(--blue);animation:pulsering 1.6s infinite;}
+@keyframes pulsering{0%,100%{box-shadow:0 0 0 0 rgba(96,165,250,.2);}50%{box-shadow:0 0 0 6px rgba(96,165,250,0);}}
+.fstep-info{padding-bottom:12px;}
+.fstep-name{font-size:12.5px;font-weight:500;color:var(--t1);}
+.fstep-desc{font-size:11px;color:var(--t3);margin-top:2px;}
 
-  @media (max-width: 800px) {
-    .workspace { grid-template-columns: 1fr; }
-    .sidebar { display: none; }
-  }
+/* Platform picker */
+.plat-section{padding:12px 16px 16px;}
+.plat-row{display:flex;gap:8px;}
+.plat-btn{flex:1;padding:8px 6px;border-radius:var(--radius);border:1px solid var(--border-md);background:var(--surface-2);cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:6px;transition:all .15s;font-family:var(--ff-body);}
+.plat-btn:hover{border-color:var(--border-dk);}
+.plat-btn.active{border-color:var(--green-bd);background:var(--green-bg);}
+.plat-icon{font-size:16px;}
+.plat-name{font-family:var(--ff-mono);font-size:10px;letter-spacing:.5px;color:var(--t2);}
+.plat-btn.active .plat-name{color:var(--green);}
+
+/* Metrics */
+.metrics{display:grid;grid-template-columns:1fr 1fr;gap:8px;padding:12px 16px 16px;}
+.metric{background:var(--surface-2);border-radius:var(--radius-sm);border:1px solid var(--border);padding:10px 12px;}
+.metric-label{font-family:var(--ff-mono);font-size:9px;letter-spacing:1px;text-transform:uppercase;color:var(--t3);margin-bottom:4px;}
+.metric-val{font-family:var(--ff-mono);font-size:20px;font-weight:400;color:var(--t1);line-height:1;}
+.metric-val.green{color:var(--green);}
+
+/* Intent */
+.intent-section{padding:12px 16px 16px;}
+.intent-card{background:var(--surface-2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:12px;display:flex;flex-direction:column;gap:10px;}
+.intent-row{display:flex;align-items:center;justify-content:space-between;}
+.intent-key{font-family:var(--ff-mono);font-size:10px;color:var(--t3);}
+.intent-chip{font-family:var(--ff-mono);font-size:10px;padding:3px 8px;border-radius:20px;border:1px solid var(--border-md);background:var(--surface-2);color:var(--t3);transition:all .3s;}
+.intent-chip.news_query{background:var(--green-bg);border-color:var(--green-bd);color:var(--green);}
+.intent-chip.post_request{background:var(--purple-bg);border-color:var(--purple-bd);color:var(--purple);}
+.intent-chip.news_then_post{background:var(--blue-bg);border-color:var(--blue-bd);color:var(--blue);}
+
+/* Voice status box */
+.voice-status-section{padding:12px 16px 16px;}
+.voice-status-card{background:var(--surface-2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:14px;text-align:center;}
+.voice-state-label{font-family:var(--ff-mono);font-size:10px;letter-spacing:1.5px;text-transform:uppercase;color:var(--t3);margin-bottom:10px;}
+.voice-waveform{display:flex;align-items:center;justify-content:center;gap:4px;height:28px;margin-bottom:10px;}
+.wave-bar{width:3px;border-radius:2px;background:var(--border-md);transition:height .1s ease,background .2s;}
+.voice-waveform.listening .wave-bar{background:var(--mic-red);animation:wavebar .6s ease infinite;}
+.voice-waveform.speaking .wave-bar{background:var(--green);animation:wavebar .4s ease infinite;}
+@keyframes wavebar{0%,100%{height:4px;}50%{height:22px;}}
+.wave-bar:nth-child(1){animation-delay:.0s;}
+.wave-bar:nth-child(2){animation-delay:.08s;}
+.wave-bar:nth-child(3){animation-delay:.16s;}
+.wave-bar:nth-child(4){animation-delay:.24s;}
+.wave-bar:nth-child(5){animation-delay:.32s;}
+.wave-bar:nth-child(6){animation-delay:.16s;}
+.wave-bar:nth-child(7){animation-delay:.08s;}
+.voice-state-text{font-size:11px;color:var(--t2);}
+
+/* Activity log */
+.log-section{flex:1;padding:12px 16px 16px;display:flex;flex-direction:column;min-height:0;}
+.log-list{flex:1;overflow-y:auto;}
+.log-item{font-family:var(--ff-mono);font-size:10px;line-height:1.6;color:var(--t3);padding:4px 0;border-bottom:1px solid var(--border);}
+.log-item .ts{opacity:.5;margin-right:6px;}
+.log-item.ok{color:var(--green);} .log-item.err{color:var(--red);} .log-item.inf{color:var(--blue);}
+
+/* ── Main area ─────────────────────────────────────────────── */
+.main-area{grid-area:main;display:flex;flex-direction:column;overflow:hidden;background:var(--bg);}
+
+.chat-vp{flex:1;overflow-y:auto;padding:32px 40px;display:flex;flex-direction:column;gap:20px;}
+
+/* Messages */
+.msg{display:flex;gap:12px;animation:fadeup .3s ease;}
+.msg.user{flex-direction:row-reverse;}
+@keyframes fadeup{from{opacity:0;transform:translateY(8px);}to{opacity:1;transform:translateY(0);}}
+.avatar{width:32px;height:32px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-family:var(--ff-mono);font-size:11px;font-weight:500;}
+.avatar.ai{background:var(--green-bg);border:1px solid var(--green-bd);color:var(--green);}
+.avatar.user{background:var(--border-md);border:1px solid var(--border-dk);color:var(--t1);}
+.bubble{max-width:80%;padding:14px 18px;border-radius:var(--radius-lg);border:1px solid var(--border);background:var(--surface-2);color:var(--t1);font-size:14px;line-height:1.7;}
+.msg.user .bubble{background:#1e1e1e;border-color:var(--border-md);color:var(--t1);}
+
+/* Typing indicator */
+.typing-bub{display:flex;gap:5px;align-items:center;padding:8px 4px;}
+.typing-bub span{width:6px;height:6px;border-radius:50%;background:var(--t3);animation:blink 1.2s infinite;}
+.typing-bub span:nth-child(2){animation-delay:.18s;} .typing-bub span:nth-child(3){animation-delay:.36s;}
+@keyframes blink{0%,100%{opacity:.25;}50%{opacity:1;}}
+
+/* Result badge */
+.result-badge{display:inline-flex;align-items:center;gap:6px;font-family:var(--ff-mono);font-size:11px;padding:4px 12px;border-radius:20px;margin-top:10px;}
+.result-badge.ok{background:var(--green-bg);border:1px solid var(--green-bd);color:var(--green);}
+.result-badge.err{background:var(--red-bg);border:1px solid var(--red-bd);color:var(--red);}
+
+/* ── Input dock ────────────────────────────────────────────── */
+.input-dock{border-top:1px solid var(--border);background:var(--surface);padding:16px 40px 20px;}
+.suggestions{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px;}
+.sug{font-size:12px;padding:6px 14px;border-radius:20px;border:1px solid var(--border-md);color:var(--t2);cursor:pointer;transition:all .2s;white-space:nowrap;user-select:none;background:var(--surface-2);}
+.sug:hover{border-color:var(--green-bd);color:var(--green);background:var(--green-bg);}
+
+.input-row{display:flex;gap:10px;align-items:flex-end;}
+
+#qinput{flex:1;background:var(--surface-2);border:1px solid var(--border-md);border-radius:var(--radius);padding:12px 16px;color:var(--t1);font-family:var(--ff-body);font-size:14px;line-height:1.5;resize:none;height:48px;outline:none;transition:border-color .2s;}
+#qinput::placeholder{color:var(--t3);}
+#qinput:focus{border-color:var(--blue-bd);}
+
+.send-btn{width:48px;height:48px;border-radius:var(--radius);border:1px solid var(--border-md);background:var(--surface-2);display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0;transition:all .2s;}
+.send-btn:hover{background:var(--border-dk);}
+.send-btn svg{width:16px;height:16px;fill:var(--t1);}
+
+/* ── Mic button ────────────────────────────────────────────── */
+.mic-btn{
+  width:48px;height:48px;border-radius:var(--radius);
+  border:1px solid var(--border-md);
+  background:var(--surface-2);
+  display:flex;align-items:center;justify-content:center;
+  cursor:pointer;flex-shrink:0;transition:all .2s;
+  position:relative;
+}
+.mic-btn:hover{border-color:var(--border-dk);}
+.mic-btn.listening{
+  border-color:var(--mic-red);
+  background:rgba(239,68,68,.1);
+  animation:mic-pulse 1.2s infinite;
+}
+.mic-btn.speaking{
+  border-color:var(--green-bd);
+  background:var(--green-bg);
+}
+@keyframes mic-pulse{0%,100%{box-shadow:0 0 0 0 rgba(239,68,68,.3);}50%{box-shadow:0 0 0 8px rgba(239,68,68,0);}}
+.mic-btn svg{width:20px;height:20px;transition:fill .2s;}
+.mic-btn svg path{fill:var(--t2);}
+.mic-btn.listening svg path{fill:var(--mic-red);}
+.mic-btn.speaking svg path{fill:var(--green);}
+
+/* Audio bar indicator inside input when recording */
+.recording-bar{
+  display:none;
+  align-items:center;gap:4px;height:48px;
+  background:rgba(239,68,68,.05);
+  border:1px solid rgba(239,68,68,.2);
+  border-radius:var(--radius);
+  padding:0 16px;flex:1;
+}
+.recording-bar.visible{display:flex;}
+.rec-dot{width:8px;height:8px;border-radius:50%;background:var(--mic-red);animation:recdot 1s infinite;}
+@keyframes recdot{0%,100%{opacity:1;}50%{opacity:.2;}}
+.rec-bars{display:flex;align-items:center;gap:3px;flex:1;justify-content:center;}
+.rec-bar{width:3px;border-radius:2px;background:var(--mic-red);animation:recbar .5s ease infinite;}
+.rec-bar:nth-child(1){animation-delay:.0s;} .rec-bar:nth-child(2){animation-delay:.07s;}
+.rec-bar:nth-child(3){animation-delay:.14s;} .rec-bar:nth-child(4){animation-delay:.21s;}
+.rec-bar:nth-child(5){animation-delay:.28s;} .rec-bar:nth-child(6){animation-delay:.14s;}
+.rec-bar:nth-child(7){animation-delay:.07s;}
+@keyframes recbar{0%,100%{height:4px;}50%{height:20px;}}
+.rec-label{font-family:var(--ff-mono);font-size:12px;color:var(--mic-red);letter-spacing:1px;margin-left:10px;}
+
+/* Speaking overlay chip */
+.speaking-chip{
+  display:none;
+  align-items:center;gap:6px;
+  font-family:var(--ff-mono);font-size:11px;
+  color:var(--green);letter-spacing:1px;text-transform:uppercase;
+  background:var(--green-bg);border:1px solid var(--green-bd);
+  padding:6px 14px;border-radius:20px;margin-left:10px;
+}
+.speaking-chip.visible{display:flex;}
+.sp-dot{width:6px;height:6px;border-radius:50%;background:var(--green);animation:livepulse 1s infinite;}
+
+::-webkit-scrollbar{width:6px;}
+::-webkit-scrollbar-track{background:transparent;}
+::-webkit-scrollbar-thumb{background:var(--border-md);border-radius:3px;}
+::-webkit-scrollbar-thumb:hover{background:var(--border-dk);}
+
+@media(max-width:860px){
+  .app{grid-template-columns:0 1fr 0;}
+  .sidebar-left,.sidebar-right{display:none;}
+  .chat-vp{padding:24px 20px;}
+  .input-dock{padding:14px 20px 20px;}
+}
 </style>
 </head>
+
 <body>
+<div class="app">
 
-<header>
-  <div class="masthead-title">News<span>Desk</span></div>
-  <div class="masthead-meta">
-    <span class="live-dot"></span>AI Reporter Engine<br>
-    <span id="clock"></span>
-  </div>
-</header>
+  <header class="topbar">
+    <div class="logo-group">
+      <div class="logo">Signal<em>.</em>AI</div>
+      <div class="tagline">Voice Tech Reporter</div>
+    </div>
+    <div class="topbar-right">
+      <div class="voice-toggle" onclick="toggleVoiceMode()" title="Toggle voice mode">
+        <div class="toggle-track" id="voiceTrack"><div class="toggle-thumb"></div></div>
+        <span id="voiceToggleLabel">Voice Off</span>
+      </div>
+      <div class="live-pill"><div class="live-dot"></div>Live</div>
+      <div class="model-chip" id="modelChip">Ollama · System</div>
+    </div>
+  </header>
 
-<div class="workspace">
-
-  <!-- ── LEFT: Feed ── -->
-  <section class="feed">
-
-    <div class="feed-toolbar">
-      <label>Query →</label>
-      <!-- BUG FIX 8: Enter key submits -->
-      <input id="queryInput" class="query-input"
-             placeholder="e.g. Find latest AI news and post it to LinkedIn"
-             value="Find latest AI news and post it to LinkedIn" />
-      <!-- BUG FIX 4: id added so JS can disable/enable it -->
-      <button id="searchBtn" class="btn primary" onclick="runQuery()">Search</button>
+  <aside class="sidebar-left">
+    <div class="sec-label">Agent Pipeline</div>
+    <div class="pipeline">
+      <div class="fstep"><div class="fstep-dot" id="fs0">1</div><div class="fstep-info"><div class="fstep-name">Intent classify</div><div class="fstep-desc">Parse request</div></div></div>
+      <div class="fstep"><div class="fstep-dot" id="fs1">2</div><div class="fstep-info"><div class="fstep-name">Web search</div><div class="fstep-desc">Fetch articles</div></div></div>
+      <div class="fstep"><div class="fstep-dot" id="fs2">3</div><div class="fstep-info"><div class="fstep-name">Filter + rank</div><div class="fstep-desc">Tech relevance</div></div></div>
+      <div class="fstep"><div class="fstep-dot" id="fs3">4</div><div class="fstep-info"><div class="fstep-name">Summarise</div><div class="fstep-desc">LLM compression</div></div></div>
+      <div class="fstep"><div class="fstep-dot" id="fs4">5</div><div class="fstep-info"><div class="fstep-name">Format + post</div><div class="fstep-desc">Social publish</div></div></div>
     </div>
 
-    <!-- Stage progress bar -->
-    <div class="stage-bar" id="stageBar" style="display:none">
-      <div class="stage" id="s-intent">Intent</div>
-      <div class="stage" id="s-search">Search</div>
-      <div class="stage" id="s-filter">Filter</div>
-      <div class="stage" id="s-summarize">Summarize</div>
-      <div class="stage" id="s-confirm">Confirm</div>
-      <div class="stage" id="s-format">Format</div>
-      <div class="stage" id="s-post">Post</div>
-    </div>
-
-    <!-- BUG FIX 7: Loading indicator with skeleton cards -->
-    <div class="loading-indicator" id="loadingIndicator">
-      <div class="spinner"></div>
-      <span class="loading-label" id="loadingLabel">Reporter is working…</span>
-    </div>
-
-    <!-- Confirmation banner -->
-    <div class="confirm-banner" id="confirmBanner">
-      <div class="confirm-title">📰 Ready to publish — review the articles above</div>
-      <div class="confirm-sub">The AI reporter has drafted a LinkedIn post from these stories. Post it now?</div>
-      <div class="confirm-actions">
-        <button class="btn success" onclick="confirmPost(true)">✓ Yes, Post to LinkedIn</button>
-        <button class="btn danger"  onclick="confirmPost(false)">✗ Cancel</button>
+    <div class="sec-label">Target Platform</div>
+    <div class="plat-section">
+      <div class="plat-row">
+        <div class="plat-btn active" id="plat-li" onclick="setPlatform('linkedin')"><div class="plat-icon">💼</div><div class="plat-name">LinkedIn</div></div>
+        <div class="plat-btn" id="plat-fb" onclick="setPlatform('facebook')"><div class="plat-icon">📘</div><div class="plat-name">Facebook</div></div>
       </div>
     </div>
 
-    <!-- Articles -->
-    <div class="articles-scroll" id="articlesScroll">
-      <div class="empty-state">
-        <div class="big">✦</div>
-        <p>Type a query above and click <strong>Search</strong>.<br>
-           The AI reporter will fetch, filter, and summarise the latest tech news.</p>
+    <div class="sec-label">Voice Status</div>
+    <div class="voice-status-section">
+      <div class="voice-status-card">
+        <div class="voice-state-label" id="voiceStateLabel">Voice Off</div>
+        <div class="voice-waveform" id="voiceWaveform">
+          <div class="wave-bar" style="height:4px"></div>
+          <div class="wave-bar" style="height:8px"></div>
+          <div class="wave-bar" style="height:4px"></div>
+          <div class="wave-bar" style="height:10px"></div>
+          <div class="wave-bar" style="height:4px"></div>
+          <div class="wave-bar" style="height:8px"></div>
+          <div class="wave-bar" style="height:4px"></div>
+        </div>
+        <div class="voice-state-text" id="voiceStateText">Toggle voice mode above</div>
+      </div>
+    </div>
+  </aside>
+
+  <main class="main-area">
+    <div class="chat-vp" id="chatVp">
+      <div class="msg">
+        <div class="avatar ai">AI</div>
+        <div class="bubble">
+          Welcome to <strong>Signal.AI</strong> — your autonomous tech news reporter.<br><br>
+          Toggle <strong>Voice Mode</strong> in the top-right corner and press the microphone to speak.
+          I'll read my answers aloud. Or just type as normal — both work fine.
+        </div>
       </div>
     </div>
 
-  </section>
+    <div class="input-dock">
+      <div class="suggestions">
+        <div class="sug" onclick="quickSend(this)">Latest AI news</div>
+        <div class="sug" onclick="quickSend(this)">Cybersecurity updates today</div>
+        <div class="sug" onclick="quickSend(this)">Find Python news and post to LinkedIn</div>
+        <div class="sug" onclick="quickSend(this)">Post hardware trends to Facebook</div>
+      </div>
+      <div class="input-row">
+        <div class="recording-bar" id="recordingBar">
+          <div class="rec-dot"></div>
+          <div class="rec-bars">
+            <div class="rec-bar"></div><div class="rec-bar"></div><div class="rec-bar"></div>
+            <div class="rec-bar"></div><div class="rec-bar"></div><div class="rec-bar"></div>
+            <div class="rec-bar"></div>
+          </div>
+          <span class="rec-label">Listening…</span>
+        </div>
 
-  <!-- ── RIGHT: Sidebar ── -->
-  <aside class="sidebar">
-    <div class="sidebar-header">
-      <div class="sidebar-label">LinkedIn Post Preview</div>
-      <div class="sidebar-title">Drafted by AI Reporter</div>
+        <textarea id="qinput" placeholder="Ask about tech news or request a social post…" onkeydown="handleKey(event)"></textarea>
+
+        <div class="speaking-chip" id="speakingChip"><div class="sp-dot"></div>Speaking</div>
+
+        <div class="mic-btn" id="micBtn" onclick="toggleMic()" title="Hold to speak">
+          <svg viewBox="0 0 24 24" fill="none">
+            <path d="M12 1a4 4 0 0 1 4 4v6a4 4 0 0 1-8 0V5a4 4 0 0 1 4-4z"/>
+            <path d="M5 11a7 7 0 0 0 14 0"/>
+            <line x1="12" y1="18" x2="12" y2="22" stroke-width="2" stroke-linecap="round"/>
+            <line x1="8" y1="22" x2="16" y2="22" stroke-width="2" stroke-linecap="round"/>
+          </svg>
+        </div>
+
+        <div class="send-btn" onclick="sendQuery()" title="Send (Enter)">
+          <svg viewBox="0 0 16 16"><path d="M2 8l12-6-5 6 5 6z"/></svg>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <aside class="sidebar-right">
+    <div class="sec-label">Session Stats</div>
+    <div class="metrics">
+      <div class="metric"><div class="metric-label">Queries</div><div class="metric-val" id="stQ">0</div></div>
+      <div class="metric"><div class="metric-label">Posts sent</div><div class="metric-val green" id="stP">0</div></div>
+      <div class="metric"><div class="metric-label">Articles</div><div class="metric-val" id="stA">0</div></div>
+      <div class="metric"><div class="metric-label">Platform</div><div class="metric-val" id="stPl" style="font-size:14px;line-height:1.3;padding-top:3px;">LinkedIn</div></div>
     </div>
 
-    <div class="post-area">
-      <div class="post-preview" id="postPreview">Post will appear here after confirmation…</div>
-      <div class="word-counter" id="wordCount"></div>
-      <div class="post-actions" id="postActions" style="display:none">
-        <button class="btn" onclick="copyPost()">Copy Post Text</button>
+    <div class="sec-label">Last Intent</div>
+    <div class="intent-section">
+      <div class="intent-card">
+        <div class="intent-row"><span class="intent-key">Detected</span><span class="intent-chip" id="intentChip">awaiting</span></div>
+        <div class="intent-row"><span class="intent-key">Platform</span><span class="intent-chip news_query" id="platformChip">linkedin</span></div>
+        <div class="intent-row"><span class="intent-key">Voice mode</span><span class="intent-chip" id="voiceModeChip">off</span></div>
       </div>
     </div>
 
-    <div class="status-log" id="statusLog">
-      <div class="log-line"><span class="log-time">--:--:--</span><span>Waiting for query…</span></div>
+    <div class="sec-label">Activity Log</div>
+    <div class="log-section">
+      <div class="log-list" id="logList"></div>
     </div>
   </aside>
 
 </div>
 
 <script>
-// ── Config ────────────────────────────────────────────────────────────────────
-const API_BASE = 'http://127.0.0.1:8000';
+/* ═══════════════════════════════════════════════════════════
+   Configuration
+═══════════════════════════════════════════════════════════ */
+const API        = 'http://localhost:8000';
+const SESSION_ID = 'sess_' + Math.random().toString(36).slice(2);
 
-// ── Service Worker ────────────────────────────────────────────────────────────
-if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.register('/sw.js').catch(() => {});
-}
+/* ═══════════════════════════════════════════════════════════
+   App state
+═══════════════════════════════════════════════════════════ */
+let voiceMode       = false; 
+let isRecording     = false;
+let isSpeaking      = false;
+let platform        = 'linkedin';
+let stats           = {q:0, p:0, a:0};
 
-// ── Clock ─────────────────────────────────────────────────────────────────────
-(function startClock() {
-  const el = document.getElementById('clock');
-  const tick = () => { el.textContent = new Date().toUTCString().slice(17, 25) + ' UTC'; };
-  tick();
-  setInterval(tick, 1000);
-})();
+// Media recording
+let mediaRecorder   = null;
+let audioChunks     = [];
+let recordStream    = null;
 
-// ── State ─────────────────────────────────────────────────────────────────────
-let sessionId  = null;   // set when backend returns awaiting_confirmation=true
-let isFetching = false;  // BUG FIX 4: guard against double-submit
+// Current TTS audio element (so we can stop it)
+let currentAudio    = null;
 
-// ── DOM helpers ───────────────────────────────────────────────────────────────
-const $  = id => document.getElementById(id);
-const STAGES = ['intent','search','filter','summarize','confirm','format','post'];
+// Professional English Voice for TTS
+const TTS_VOICE     = 'en-US-ChristopherNeural';
 
-function setStage(name, status) {
-  const el = $('s-' + name);
-  if (!el) return;
-  el.classList.remove('active', 'done', 'error');
-  if (status) el.classList.add(status);
-}
+/* ═══════════════════════════════════════════════════════════
+   Utility helpers
+═══════════════════════════════════════════════════════════ */
+function ts(){return new Date().toTimeString().slice(0,8);}
 
-function resetStages() {
-  STAGES.forEach(s => setStage(s, ''));
-}
-
-// Mark all stages up to (and including) `last` as done
-function markStagesDone(...names) {
-  names.forEach(n => setStage(n, 'done'));
-}
-
-function log(msg, cls = '') {
-  const box = $('statusLog');
-  const t   = new Date().toTimeString().slice(0, 8);
-  box.insertAdjacentHTML('beforeend',
-    `<div class="log-line"><span class="log-time">${t}</span><span class="${cls}">${escHtml(msg)}</span></div>`
-  );
-  box.scrollTop = box.scrollHeight;
-}
-
-function escHtml(s) {
+function esc(s){
   return String(s)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
-// BUG FIX 4: centralised lock so Search can't fire twice
-function setFetching(active) {
-  isFetching = active;
-  $('searchBtn').disabled  = active;
-  $('queryInput').disabled = active;
+function log(msg, type=''){
+  const list = document.getElementById('logList');
+  const el   = document.createElement('div');
+  el.className = 'log-item'+(type?' '+type:'');
+  el.innerHTML = `<span class="ts">${ts()}</span>${esc(msg)}`;
+  list.prepend(el);
+  while(list.children.length > 100) list.removeChild(list.lastChild);
 }
 
-// BUG FIX 7: loading indicator helpers
-function showLoading(label = 'Reporter is working…') {
-  $('loadingLabel').textContent = label;
-  $('loadingIndicator').classList.add('visible');
-}
-function hideLoading() {
-  $('loadingIndicator').classList.remove('visible');
+function updateStats(){
+  document.getElementById('stQ').textContent = stats.q;
+  document.getElementById('stP').textContent = stats.p;
+  document.getElementById('stA').textContent = stats.a;
 }
 
-function renderSkeletons(count = 3) {
-  const el = $('articlesScroll');
-  el.innerHTML = Array.from({ length: count }, () => `
-    <div class="skeleton-card">
-      <div class="skeleton-line title"></div>
-      <div class="skeleton-line"></div>
-      <div class="skeleton-line short"></div>
-    </div>`).join('');
-}
+/* ═══════════════════════════════════════════════════════════
+   Voice mode toggle
+═══════════════════════════════════════════════════════════ */
+function toggleVoiceMode(){
+  voiceMode = !voiceMode;
+  const track = document.getElementById('voiceTrack');
+  const label = document.getElementById('voiceToggleLabel');
+  const chip  = document.getElementById('voiceModeChip');
+  const wf    = document.getElementById('voiceWaveform');
+  const stLabel = document.getElementById('voiceStateLabel');
+  const stText  = document.getElementById('voiceStateText');
 
-function renderArticles(articles) {
-  const el = $('articlesScroll');
-  if (!articles || articles.length === 0) {
-    el.innerHTML = '<div class="empty-state"><div class="big">📭</div><p>No articles found. Try a different query.</p></div>';
-    return;
+  track.classList.toggle('on', voiceMode);
+  label.textContent = voiceMode ? 'Voice On' : 'Voice Off';
+  chip.textContent  = voiceMode ? 'on'        : 'off';
+  chip.className    = voiceMode ? 'intent-chip news_query' : 'intent-chip';
+
+  if(voiceMode){
+    stLabel.textContent = 'Ready';
+    stText.textContent  = 'Press mic to speak';
+    document.getElementById('micBtn').style.opacity = '1';
+    log('Voice mode enabled', 'ok');
+  } else {
+    stLabel.textContent = 'Voice Off';
+    stText.textContent  = 'Toggle voice mode above';
+    wf.className = 'voice-waveform';
+    stopSpeaking();
+    log('Voice mode disabled');
   }
-  el.innerHTML = articles.map((art, i) => `
-    <div class="article-card">
-      <div class="article-index">Article ${i + 1} of ${articles.length}</div>
-      <div class="article-title">${escHtml(art.title || 'Untitled')}</div>
-      <span class="status-badge badge-new">Verified</span>
-      ${art.summary ? `<div class="article-summary">${escHtml(art.summary)}</div>` : ''}
-      <div class="article-source">Source: ${escHtml(art.source || art.url || '—')}</div>
-    </div>`).join('');
 }
 
-function showPost(text) {
-  const el = $('postPreview');
-  el.textContent = text;          // textContent is safe — no XSS risk
-  el.classList.add('has-content');
-  $('wordCount').textContent = `${text.trim().split(/\s+/).length} words`;
-  $('postActions').style.display = '';
+/* ═══════════════════════════════════════════════════════════
+   Platform picker
+═══════════════════════════════════════════════════════════ */
+function setPlatform(p){
+  platform = p;
+  document.getElementById('plat-li').classList.toggle('active', p==='linkedin');
+  document.getElementById('plat-fb').classList.toggle('active', p==='facebook');
+  document.getElementById('stPl').textContent = p.charAt(0).toUpperCase()+p.slice(1);
+  document.getElementById('platformChip').textContent = p;
+  log('Platform → '+p,'inf');
 }
 
-function copyPost() {
-  navigator.clipboard.writeText($('postPreview').textContent)
-    .then(() => log('Copied to clipboard ✓', 'log-ok'))
-    .catch(() => log('Copy failed — please select and copy manually', 'log-err'));
+/* ═══════════════════════════════════════════════════════════
+   Pipeline step indicator
+═══════════════════════════════════════════════════════════ */
+function setStep(active){
+  for(let i=0;i<5;i++){
+    const el=document.getElementById('fs'+i);
+    el.className='fstep-dot'+(i<active?' done':i===active?' active':'');
+    el.textContent=i<active?'✓':(i+1);
+  }
 }
 
-// ── Main query ────────────────────────────────────────────────────────────────
-async function runQuery() {
-  // BUG FIX 4: prevent double-fire
-  if (isFetching) return;
+function setIntent(intent){
+  const chip=document.getElementById('intentChip');
+  chip.textContent=intent || 'chat';
+  chip.className='intent-chip '+(intent||'other');
+}
 
-  const query = $('queryInput').value.trim();
-  if (!query) return;
+/* ═══════════════════════════════════════════════════════════
+   Chat DOM helpers
+═══════════════════════════════════════════════════════════ */
+function scrollBottom(){
+  const vp=document.getElementById('chatVp');
+  vp.scrollTop=vp.scrollHeight;
+}
 
-  // Reset UI
-  $('articlesScroll').innerHTML = '';
-  $('confirmBanner').classList.remove('visible');
-  $('postPreview').textContent = 'Processing query…';
-  $('postPreview').classList.remove('has-content');
-  $('wordCount').textContent = '';
-  $('postActions').style.display = 'none';
-  $('stageBar').style.display = '';
-  resetStages();
-  sessionId = null;
+function addMsg(role, content){
+  const vp  = document.getElementById('chatVp');
+  const row = document.createElement('div');
+  row.className = 'msg'+(role==='user'?' user':'');
+  const av = document.createElement('div');
+  av.className='avatar '+(role==='user'?'user':'ai');
+  av.textContent = role==='user'?'You':'AI';
+  const bub = document.createElement('div');
+  bub.className='bubble';
+  if(typeof content==='string') bub.innerHTML=content;
+  else bub.appendChild(content);
+  row.appendChild(av);row.appendChild(bub);
+  vp.appendChild(row);scrollBottom();
+  return bub;
+}
 
-  setFetching(true);                  // BUG FIX 4: lock
-  showLoading('Classifying intent…'); // BUG FIX 7: show spinner
-  renderSkeletons();                  // BUG FIX 7: skeleton cards
-  setStage('intent', 'active');
-  log('New query: ' + query, 'log-info');
+function addTyping(){
+  const vp=document.getElementById('chatVp');
+  const row=document.createElement('div');
+  row.id='typingRow';row.className='msg';
+  const av=document.createElement('div');av.className='avatar ai';av.textContent='AI';
+  const bub=document.createElement('div');bub.className='bubble';
+  bub.innerHTML='<div class="typing-bub"><span></span><span></span><span></span></div>';
+  row.appendChild(av);row.appendChild(bub);
+  vp.appendChild(row);scrollBottom();
+}
+function removeTyping(){const t=document.getElementById('typingRow');if(t)t.remove();}
 
-  try {
-    // BUG FIX 7: update label as we progress — it's a single long request
-    // so we show activity feedback during the wait
-    const labelInterval = (() => {
-      const msgs = [
-        'Classifying intent…',
-        'Searching for news…',
-        'Filtering articles…',
-        'Summarising with AI…',
-        'Almost ready…',
-      ];
-      let i = 0;
-      return setInterval(() => {
-        i = Math.min(i + 1, msgs.length - 1);
-        $('loadingLabel').textContent = msgs[i];
-      }, 8000);  // advance label every 8 s (LLM calls are slow)
-    })();
+/* ═══════════════════════════════════════════════════════════
+   TTS — speak text aloud using /tts endpoint
+═══════════════════════════════════════════════════════════ */
+async function speakText(text){
+  if(!voiceMode || !text || !text.trim()) return;
+  stopSpeaking();
+  setSpeakingState(true);
 
-    const controller = new AbortController();
-    const timeoutId  = setTimeout(() => controller.abort(), 125_000); // 125 s
-
-    const resp = await fetch(`${API_BASE}/query`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ query }),
-      signal: controller.signal,
+  try{
+    const res = await fetch(API+'/tts', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({text: text.trim().slice(0,800), voice: TTS_VOICE})
     });
+    if(!res.ok){ console.warn('TTS failed',res.status); setSpeakingState(false); return; }
 
-    clearTimeout(timeoutId);
-    clearInterval(labelInterval);
-    hideLoading();
+    const blob   = await res.blob();
+    const url    = URL.createObjectURL(blob);
+    currentAudio = new Audio(url);
+    currentAudio.onended  = ()=>{ setSpeakingState(false); URL.revokeObjectURL(url); };
+    currentAudio.onerror  = ()=>{ setSpeakingState(false); };
+    await currentAudio.play();
 
-    if (!resp.ok) {
-      const detail = await resp.json().catch(() => ({ detail: resp.statusText }));
-      throw new Error(detail.detail || `HTTP ${resp.status}`);
-    }
-
-    const data = await resp.json();
-    setStage('intent', 'done');
-    log('Intent classified', 'log-ok');
-
-    const hasPreview    = Array.isArray(data.news_preview) && data.news_preview.length > 0;
-    const needsConfirm  = data.awaiting_confirmation === true;
-
-    if (needsConfirm) {
-      markStagesDone('search', 'filter', 'summarize');
-      setStage('confirm', 'active');
-
-      if (hasPreview) {
-        renderArticles(data.news_preview);
-        log(`${data.news_preview.length} articles ready for review`, 'log-ok');
-      }
-
-      sessionId = data.session_id;
-      $('confirmBanner').classList.add('visible');
-      log('⚑ Waiting for your confirmation…', 'log-info');
-      // Keep buttons enabled so user can click Yes/No
-      setFetching(false);
-
-    } else if (hasPreview) {
-      // news_query — just show articles, no post
-      markStagesDone('search', 'filter', 'summarize', 'confirm');
-      renderArticles(data.news_preview);
-      log(`${data.news_preview.length} articles ready`, 'log-ok');
-      $('postPreview').textContent = 'News query only — no post created.\nUse "Find X and post it to LinkedIn" to draft a post.';
-      $('postPreview').classList.add('has-content');
-      setTimeout(() => { $('stageBar').style.display = 'none'; }, 2000);
-      setFetching(false);
-
-    } else {
-      // post_request — pipeline already finished
-      markStagesDone('search', 'filter', 'summarize', 'confirm', 'format', 'post');
-      showPost(data.response);
-      log('✓ Post published directly', 'log-ok');
-      setTimeout(() => { $('stageBar').style.display = 'none'; }, 2000);
-      setFetching(false);
-    }
-
-  } catch (err) {
-    hideLoading();
-    clearInterval(0); // belt-and-suspenders
-    setStage('intent', 'error');
-    log(`Error: ${err.name === 'AbortError' ? 'Request timed out (>2 min)' : err.message}`, 'log-err');
-    $('articlesScroll').innerHTML = '<div class="empty-state"><div class="big">⚠</div><p>Something went wrong. Check the console and ensure the backend is running.</p></div>';
-    $('postPreview').textContent = 'An error occurred.';
-    setFetching(false);
+  }catch(e){
+    console.warn('TTS error:',e);
+    setSpeakingState(false);
   }
 }
 
-// ── Confirmation ──────────────────────────────────────────────────────────────
-async function confirmPost(yes) {
-  if (!sessionId) {
-    log('Error: no active session — run a new query', 'log-err');
+function stopSpeaking(){
+  if(currentAudio){
+    currentAudio.pause();
+    currentAudio = null;
+  }
+  setSpeakingState(false);
+}
+
+function setSpeakingState(speaking){
+  isSpeaking = speaking;
+  const micBtn = document.getElementById('micBtn');
+  const chip   = document.getElementById('speakingChip');
+  const wf     = document.getElementById('voiceWaveform');
+  const stLabel= document.getElementById('voiceStateLabel');
+  const stText = document.getElementById('voiceStateText');
+
+  micBtn.classList.toggle('speaking', speaking);
+  chip.classList.toggle('visible', speaking);
+
+  if(speaking){
+    wf.className='voice-waveform speaking';
+    stLabel.textContent='Speaking';
+    stText.textContent='AI is reading aloud';
+  } else if(voiceMode){
+    wf.className='voice-waveform';
+    stLabel.textContent='Ready';
+    stText.textContent='Press mic to speak';
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════
+   STT — record and transcribe via /stt endpoint
+═══════════════════════════════════════════════════════════ */
+async function toggleMic(){
+  if(!voiceMode){
+    addMsg('ai','Please turn on <strong>Voice Mode</strong> using the toggle in the top-right corner first.');
+    return;
+  }
+  if(isSpeaking){ stopSpeaking(); return; }
+  if(isRecording){ stopRecording(); return; }
+  await startRecording();
+}
+
+async function startRecording(){
+  try{
+    recordStream = await navigator.mediaDevices.getUserMedia({audio:true});
+  }catch(e){
+    addMsg('ai','Microphone access was denied. Please allow microphone permission in your browser settings.');
+    log('Mic permission denied','err');
     return;
   }
 
-  // Prevent accidental double-click on confirm buttons
-  document.querySelectorAll('.confirm-actions .btn').forEach(b => b.disabled = true);
-  $('confirmBanner').classList.remove('visible');
+  audioChunks = [];
+  mediaRecorder = new MediaRecorder(recordStream, {mimeType:'audio/webm'});
+  mediaRecorder.ondataavailable = e=>{ if(e.data.size>0) audioChunks.push(e.data); };
+  mediaRecorder.onstop = handleRecordingStop;
+  mediaRecorder.start(100); 
+  isRecording = true;
 
-  if (!yes) {
-    setStage('confirm', 'error');
-    log('Posting cancelled by user', 'log-err');
-    $('postPreview').textContent = 'Posting cancelled.\nSummaries are saved above.';
-    $('postPreview').classList.add('has-content');
-    // Still call backend so it cleans up the session
-    fetch(`${API_BASE}/confirm`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ session_id: sessionId, confirmed: false }),
-    }).catch(() => {});  // fire-and-forget; we don't need the response
-    sessionId = null;
-    document.querySelectorAll('.confirm-actions .btn').forEach(b => b.disabled = false);
-    return;
+  document.getElementById('qinput').style.display='none';
+  document.getElementById('recordingBar').classList.add('visible');
+  document.getElementById('micBtn').classList.add('listening');
+  document.getElementById('voiceWaveform').className='voice-waveform listening';
+  document.getElementById('voiceStateLabel').textContent='Listening';
+  document.getElementById('voiceStateText').textContent='Speak now, click mic to stop';
+  log('Recording started','inf');
+}
+
+function stopRecording(){
+  if(!mediaRecorder || mediaRecorder.state==='inactive') return;
+  mediaRecorder.stop();
+  recordStream.getTracks().forEach(t=>t.stop());
+  isRecording = false;
+
+  document.getElementById('qinput').style.display='';
+  document.getElementById('recordingBar').classList.remove('visible');
+  document.getElementById('micBtn').classList.remove('listening');
+  document.getElementById('voiceStateLabel').textContent='Processing…';
+  document.getElementById('voiceStateText').textContent='Transcribing your speech';
+  log('Recording stopped — transcribing…','inf');
+}
+
+async function handleRecordingStop(){
+  const blob = new Blob(audioChunks, {type:'audio/webm'});
+  audioChunks = [];
+  addTyping();
+
+  try{
+    const formData = new FormData();
+    formData.append('audio', blob, 'voice.webm');
+    formData.append('language','en');
+
+    const res = await fetch(API+'/stt', {method:'POST', body:formData});
+    if(!res.ok){ throw new Error('STT server error '+res.status); }
+
+    const data = await res.json();
+    removeTyping();
+
+    const transcript = (data.transcript||'').trim();
+    if(!transcript){
+      addMsg('ai','I couldn\'t hear anything clearly. Please try again.');
+      log('STT: empty transcript','err');
+      resetVoiceUI();
+      return;
+    }
+
+    log('Transcript: "'+transcript.slice(0,50)+'"','ok');
+    document.getElementById('qinput').value = transcript;
+    await sendQuery();
+
+  }catch(e){
+    removeTyping();
+    addMsg('ai','Speech recognition failed: '+e.message+'. Make sure the backend is running.');
+    log('STT error: '+e.message,'err');
+    resetVoiceUI();
   }
+}
 
-  // User said Yes
-  setStage('confirm', 'done');
-  setStage('format', 'active');
-  showLoading('Drafting post…');       // BUG FIX 7
-  log('Formatting post in reporter voice…');
+function resetVoiceUI(){
+  if(voiceMode){
+    document.getElementById('voiceStateLabel').textContent='Ready';
+    document.getElementById('voiceStateText').textContent='Press mic to speak';
+    document.getElementById('voiceWaveform').className='voice-waveform';
+  }
+}
 
-  try {
-    const controller = new AbortController();
-    const timeoutId  = setTimeout(() => controller.abort(), 125_000);
+/* ═══════════════════════════════════════════════════════════
+   Main send (Hits the /chat API conversationally)
+═══════════════════════════════════════════════════════════ */
+async function sendQuery(text){
+  const inp   = document.getElementById('qinput');
+  const query = (text||inp.value).trim();
+  if(!query) return;
+  inp.value='';
 
-    const resp = await fetch(`${API_BASE}/confirm`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ session_id: sessionId, confirmed: true }),
-      signal: controller.signal,
+  stopSpeaking();
+  addMsg('user',esc(query));
+  addTyping();
+  setStep(0);stats.q++;updateStats();
+  log('Query: "'+query.slice(0,52)+(query.length>52?'…':'')+'"');
+  resetVoiceUI();
+
+  const stepTimers=[
+    setTimeout(()=>{setStep(1);log('Processing request…','inf');},320),
+    setTimeout(()=>{setStep(2);log('Executing agent workflow…','inf');},850),
+  ];
+
+  try{
+    const res  = await fetch(API+'/chat',{
+      method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({message:query, session_id:SESSION_ID, voice_mode:voiceMode})
     });
-
-    clearTimeout(timeoutId);
-    hideLoading();
-    sessionId = null;
-
-    if (!resp.ok) {
-      const detail = await resp.json().catch(() => ({ detail: resp.statusText }));
-      throw new Error(detail.detail || `HTTP ${resp.status}`);
+    
+    stepTimers.forEach(clearTimeout);
+    const data = await res.json();
+    removeTyping();
+    setStep(5);
+    
+    // Update Sidebar state
+    setIntent(data.action || 'chat');
+    if (data.response && (data.response.includes('published') || data.response.includes('posted successfully'))) {
+      stats.p++; updateStats();
     }
 
-    const data = await resp.json();
+    // Output response text
+    addMsg('ai', (data.response||'Done.').replace(/\n/g,'<br>'));
+    
+    // Speak aloud if voice mode is on
+    await speakText(data.voice_text || data.response || '');
+    log('Response received','ok');
 
-    setStage('format', 'done');
-    setStage('post', data.success ? 'done' : 'error');
-
-    if (data.success) {
-      showPost(data.response);
-      log('✓ Published to LinkedIn', 'log-ok');
-    } else {
-      log('Post failed — see response below', 'log-err');
-      $('postPreview').textContent = data.response;
-      $('postPreview').classList.add('has-content');
-    }
-
-    setTimeout(() => { $('stageBar').style.display = 'none'; }, 1500);
-
-  } catch (err) {
-    hideLoading();
-    setStage('post', 'error');
-    log(`Confirm error: ${err.name === 'AbortError' ? 'Timed out' : err.message}`, 'log-err');
-  } finally {
-    document.querySelectorAll('.confirm-actions .btn').forEach(b => b.disabled = false);
+  }catch(e){
+    stepTimers.forEach(clearTimeout);
+    removeTyping();setStep(0);setIntent('other');
+    addMsg('ai',
+      'Cannot reach the backend at <strong>localhost:8000</strong>.<br><br>'+
+      'Start the server:<br>'+
+      '<code style="font-family:var(--ff-mono);font-size:12px;color:var(--green);">uvicorn api.main:app --reload</code>'
+    );
+    log('Backend unreachable: '+e.message,'err');
   }
 }
 
-// BUG FIX 8: Enter key on input fires runQuery
-document.getElementById('queryInput').addEventListener('keydown', (e) => {
-  if (e.key === 'Enter') runQuery();
-});
+function quickSend(el){sendQuery(el.textContent);}
+
+function handleKey(e){
+  if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendQuery();}
+}
+
+/* ═══════════════════════════════════════════════════════════
+   Init
+═══════════════════════════════════════════════════════════ */
+log('Signal.AI ready','ok');
+log('Backend: localhost:8000','inf');
+log('Voice: Edge-TTS ('+TTS_VOICE+')','inf');
+
+// Check mic availability quietly
+navigator.mediaDevices?.getUserMedia({audio:true})
+  .then(s=>{s.getTracks().forEach(t=>t.stop());log('Microphone available','ok');})
+  .catch(()=>log('Microphone not available or blocked','err'));
 </script>
 </body>
 </html>

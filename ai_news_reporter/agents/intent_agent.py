@@ -10,6 +10,9 @@ _VALID_INTENTS = frozenset({"news_query", "post_request", "news_then_post", "oth
 # Strips surrounding quotes, backticks, punctuation, and whitespace from LLM output
 _CLEAN_RE = re.compile(r'[\s"\'`.,;:]+')
 
+# Word-boundary pattern — prevents "fb" matching "feedback", "buffer", etc.
+_FACEBOOK_RE = re.compile(r'\b(facebook|fb)\b', re.IGNORECASE)
+
 
 class IntentAgent:
     """Classifies a user query into one of four intent categories."""
@@ -44,7 +47,7 @@ Rules:
         # Normalise: strip whitespace, quotes, punctuation, lowercase
         intent = _CLEAN_RE.sub("", raw).lower()
 
-        # The LLM sometimes returns the category inside a longer phrase –
+        # The LLM sometimes returns the category inside a longer phrase —
         # try to extract a known intent token if exact match fails.
         if intent not in _VALID_INTENTS:
             for candidate in _VALID_INTENTS:
@@ -58,16 +61,19 @@ Rules:
         logger.info("Classified intent: %r → %r", query[:60], intent)
         return intent
 
-    async def detect_platform(self, query: str) -> str:
+    def detect_platform(self, query: str) -> str:
         """Detect which social platform the user wants to post to.
-        
+
+        Uses a word-boundary regex to avoid false positives such as
+        "feedback", "buffer", or "combat" matching "fb" or "face".
+
         Returns:
-            - 'facebook' if user mentions Facebook
-            - 'linkedin' otherwise (default)
+            - ``'facebook'`` if the query explicitly mentions Facebook or the
+              abbreviation ``fb`` as a standalone word.
+            - ``'linkedin'`` otherwise (safe default).
         """
-        query_lower = query.lower()
-        if any(platform in query_lower for platform in ['facebook', 'fb', 'meta']):
+        if _FACEBOOK_RE.search(query):
             logger.info("Detected platform: Facebook")
-            return 'facebook'
+            return "facebook"
         logger.info("Detected platform: LinkedIn (default)")
-        return 'linkedin'
+        return "linkedin"

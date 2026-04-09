@@ -13,20 +13,29 @@ class NewsFilterAgent:
         "neural network", "llm", "large language model", "gpt", "gemini",
         "claude", "mistral", "llama", "diffusion", "transformer", "rag",
         "generative ai", "computer vision", "nlp", "natural language",
+        
         # Cloud & infrastructure
         "cloud", "aws", "azure", "gcp", "kubernetes", "docker", "serverless",
         "microservices", "devops", "ci/cd", "infrastructure",
+        
         # Cybersecurity
         "cybersecurity", "security", "data breach", "ransomware", "malware",
         "vulnerability", "exploit", "zero-day", "phishing", "encryption",
+        
         # Hardware & devices
         "chip", "processor", "gpu", "semiconductor", "nvidia", "amd", "intel",
         "arm", "quantum", "hardware", "robot", "drone", "sensor", "wearable",
         "vr", "ar", "augmented reality", "virtual reality", "headset",
+        
         # Software & platforms
         "software", "app", "mobile", "ios", "android", "api", "open source",
         "framework", "platform", "saas", "startup", "tech", "digital",
         "programming", "developer", "code", "github",
+        
+        # --- NEW: Programming Languages ---
+        "python", "javascript", "typescript", "java", "c++", "rust", "golang", 
+        "ruby", "php", "sql", "html", "css", "react", "node.js",
+        
         # Business / industry trends
         "funding", "ipo", "acquisition", "valuation", "unicorn", "venture",
         "innovation", "disruption", "automation", "blockchain", "crypto",

@@ -1,7 +1,14 @@
 import os
+from pathlib import Path
 from dotenv import load_dotenv
 
-load_dotenv()
+# Load .env from the directory where config.py is located
+config_dir = Path(__file__).parent
+env_path = config_dir / ".env"
+print(f"DEBUG: Loading .env from: {env_path}")
+print(f"DEBUG: .env exists: {env_path.exists()}")
+load_dotenv(env_path)
+print(f"DEBUG: .env loaded. Environment NOW has NEWS_API_KEY: {os.getenv('NEWS_API_KEY', 'NOT_FOUND')[:20]}..." if os.getenv('NEWS_API_KEY') else "DEBUG: NEWS_API_KEY NOT in environment after load")
 
 class Config:
     OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
