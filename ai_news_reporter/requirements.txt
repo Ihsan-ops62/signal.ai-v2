@@ -6,6 +6,3 @@ langchain-ollama
 motor
 pydantic
 python-dotenv
-httpx
-tenacity
-ddgs
