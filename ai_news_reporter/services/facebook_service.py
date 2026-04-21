@@ -1,51 +1,109 @@
+"""
+services/facebook_service.py
+────────────────────────────
+Facebook Graph API helper.
+"""
+
 import asyncio
 import logging
 import time
 import httpx
 
 from config import config
+from database.mongodb_client import MongoDB
 
 logger = logging.getLogger(__name__)
 
-MIN_SECONDS_BETWEEN_POSTS: int = 60
-
-_last_post_time: float = 0.0
+# Per‑user rate limiting for Facebook
+async def _check_rate_limit(username: str, platform: str = "facebook") -> bool:
+    if not username:
+        return True
+    coll = MongoDB.get_collection("user_rate_limits")
+    now = time.time()
+    doc = await coll.find_one({"username": username, "platform": platform})
+    if not doc:
+        await coll.insert_one({
+            "username": username,
+            "platform": platform,
+            "last_post_time": 0,
+            "count": 0,
+            "last_reset": now,
+        })
+        return True
+    if now - doc.get("last_reset", 0) > 60:
+        await coll.update_one({"_id": doc["_id"]}, {"$set": {"count": 0, "last_reset": now}})
+        return True
+    if doc.get("count", 0) >= 1:
+        logger.info("Rate limit hit for user %s on Facebook", username)
+        return False
+    await coll.update_one({"_id": doc["_id"]}, {"$inc": {"count": 1}, "$set": {"last_post_time": now}})
+    return True
 
 
 class FacebookService:
-    """All Facebook Graph API operations in one place."""
+    _GRAPH_VERSION = "v20.0"
 
     @staticmethod
-    async def create_post(content: str) -> dict:
-        """Publish a text post to Facebook page.
+    async def create_post(
+        content: str,
+        access_token: str = None,
+        page_id: str = None,
+        username: str = None,
+    ) -> dict:
+        # ── EMPTY CONTENT VALIDATION ──────────────────────────────────────
+        if not content or not content.strip():
+            return {"success": False, "error": "Post content cannot be empty."}
 
-        Returns:
-            ``{"success": True, "post_id": "<id>"}``  on success.
-            ``{"success": False, "error": "<message>"}``  on failure.
-        """
-        global _last_post_time
+        token = access_token
+        pid   = page_id
 
-        # Guard: tokens and page ID present
-        access_token = getattr(config, "FACEBOOK_PAGE_ACCESS_TOKEN", None)
-        page_id = getattr(config, "FACEBOOK_PAGE_ID", None)
+        if username and (not token or not pid):
+            try:
+                from services.oauth_service import load_token
+                record = await load_token(username.lower(), "facebook")
+                if record:
+                    if not token:
+                        token = record.get("access_token")
+                    if not pid:
+                        pid = record.get("page_id")
+            except Exception as exc:
+                logger.warning("Could not load Facebook token for %s: %s", username, exc)
 
-        if not access_token:
-            return {"success": False, "error": "FACEBOOK_PAGE_ACCESS_TOKEN not set in environment"}
+        if not token:
+            token = getattr(config, "FACEBOOK_PAGE_ACCESS_TOKEN", None)
+        if not pid:
+            pid = getattr(config, "FACEBOOK_PAGE_ID", None)
 
-        if not page_id:
-            return {"success": False, "error": "FACEBOOK_PAGE_ID not set in environment"}
+        if not token:
+            return {
+                "success": False,
+                "error": (
+                    "No Facebook access token available. "
+                    "Connect your Facebook account via Settings → Connected Accounts, "
+                    "or provide a token manually."
+                ),
+            }
+        if not pid:
+            return {
+                "success": False,
+                "error": (
+                    "No Facebook Page ID available. "
+                    "Ensure your Facebook account is connected and a page_id is stored."
+                ),
+            }
 
-        # Guard: rate limit – wait if we posted too recently
-        elapsed = time.time() - _last_post_time
-        if elapsed < MIN_SECONDS_BETWEEN_POSTS:
-            wait = MIN_SECONDS_BETWEEN_POSTS - elapsed
-            logger.info("Rate-limit: waiting %.1f s before posting to Facebook", wait)
-            await asyncio.sleep(wait)
+        if username:
+            allowed = await _check_rate_limit(username, "facebook")
+            if not allowed:
+                return {
+                    "success": False,
+                    "error": "Rate limit: Only one Facebook post per minute allowed. Please wait."
+                }
 
-        result = await FacebookService._post_with_retry(page_id, access_token, content)
+        result = await FacebookService._post_with_retry(pid, token, content)
 
         if result["success"]:
-            _last_post_time = time.time()
+            result["platform"] = "facebook"
 
         return result
 
@@ -56,15 +114,10 @@ class FacebookService:
         content: str,
         max_attempts: int = 3,
     ) -> dict:
-        """POST to the Facebook Graph API with exponential back-off.
-
-        Retries on 429 (rate-limited) and 5xx (server errors).
-        """
-        url = f"https://graph.facebook.com/v20.0/{page_id}/feed"
+        url   = f"https://graph.facebook.com/{FacebookService._GRAPH_VERSION}/{page_id}/feed"
         delay = 2.0
-
         payload = {
-            "message": content,
+            "message":      content,
             "access_token": access_token,
         }
 
@@ -72,38 +125,30 @@ class FacebookService:
             try:
                 async with httpx.AsyncClient(timeout=30.0) as client:
                     resp = await client.post(url, data=payload)
-
                 status = resp.status_code
                 logger.debug("Facebook POST attempt %d → HTTP %d", attempt, status)
 
                 if status == 200:
-                    response_json = resp.json()
-                    post_id = response_json.get("id", "unknown")
-                    logger.info("Facebook post created successfully: %s", post_id)
+                    post_id = resp.json().get("id", "unknown")
+                    logger.info("Facebook post created: %s", post_id)
                     return {"success": True, "post_id": post_id}
 
-                if status in (429, 500, 502, 503, 504):
+                if status in (429, 500, 502, 503, 504) and attempt < max_attempts:
                     retry_after = int(resp.headers.get("Retry-After", delay))
                     logger.warning(
                         "Facebook %d on attempt %d/%d – retrying in %ds",
                         status, attempt, max_attempts, retry_after,
                     )
-                    if attempt < max_attempts:
-                        await asyncio.sleep(retry_after)
-                        delay *= 2
-                        continue
+                    await asyncio.sleep(retry_after)
+                    delay *= 2
+                    continue
 
-                # Non-retryable error
                 error_msg = resp.text
                 try:
-                    error_data = resp.json()
-                    error_msg = error_data.get("error", {}).get("message", error_msg)
+                    error_msg = resp.json().get("error", {}).get("message", error_msg)
                 except Exception:
                     pass
-
-                logger.error(
-                    "Facebook API error %d: %s", status, error_msg
-                )
+                logger.error("Facebook API error %d: %s", status, error_msg)
                 return {"success": False, "error": f"Facebook API error {status}: {error_msg}"}
 
             except httpx.RequestError as exc:
@@ -113,39 +158,28 @@ class FacebookService:
                     delay *= 2
                     continue
                 return {"success": False, "error": f"Network error: {exc}"}
-            except Exception as exc:
-                logger.exception("Unexpected error posting to Facebook on attempt %d", attempt)
-                return {"success": False, "error": f"Unexpected error: {exc}"}
 
         return {
             "success": False,
-            "error": f"Failed to post to Facebook after {max_attempts} attempts",
+            "error":   f"Failed to post to Facebook after {max_attempts} attempts",
         }
 
     @staticmethod
     async def get_page_info(page_id: str, access_token: str) -> dict:
-        """Verify page access and retrieve page info.
-
-        Returns:
-            Page info or error details.
-        """
-        url = f"https://graph.facebook.com/v20.0/{page_id}"
+        url    = f"https://graph.facebook.com/{FacebookService._GRAPH_VERSION}/{page_id}"
         params = {
-            "fields": "id,name,about,picture",
+            "fields":       "id,name,about,picture",
             "access_token": access_token,
         }
-
         try:
             async with httpx.AsyncClient(timeout=15.0) as client:
                 resp = await client.get(url, params=params)
-
             if resp.status_code == 200:
-                logger.info("Facebook page verified successfully")
                 return {"success": True, "data": resp.json()}
-
-            logger.error("Failed to verify Facebook page: %s %s", resp.status_code, resp.text)
-            return {"success": False, "error": resp.text}
-
+            try:
+                err = resp.json().get("error", {}).get("message", resp.text)
+            except Exception:
+                err = resp.text
+            return {"success": False, "error": err}
         except Exception as exc:
-            logger.exception("Error verifying Facebook page: %s", exc)
             return {"success": False, "error": str(exc)}

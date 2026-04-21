@@ -1,79 +1,95 @@
 import logging
 import re
+from typing import List
 
 from services.ollama_service import OllamaService
 
 logger = logging.getLogger(__name__)
 
 _VALID_INTENTS = frozenset({"news_query", "post_request", "news_then_post", "other"})
+_CLEAN_RE      = re.compile(r'[\s"\'`.,;:]+')
+_FACEBOOK_RE   = re.compile(r'\b(facebook|fb)\b', re.IGNORECASE)
+_LINKEDIN_RE   = re.compile(r'\b(linkedin|linked in)\b', re.IGNORECASE)
+_TWITTER_RE    = re.compile(r'\b(twitter|tweet)\b', re.IGNORECASE)
 
-# Strips surrounding quotes, backticks, punctuation, and whitespace from LLM output
-_CLEAN_RE = re.compile(r'[\s"\'`.,;:]+')
-
-# Word-boundary pattern — prevents "fb" matching "feedback", "buffer", etc.
-_FACEBOOK_RE = re.compile(r'\b(facebook|fb)\b', re.IGNORECASE)
+# Expanded keyword sets for heuristic
+_SEARCH_KEYWORDS = {"search", "find", "fetch", "look up", "get", "show", "tell", "what is", "latest", "news", "update", "headline", "article", "story", "trend", "recent"}
+_POST_KEYWORDS   = {"post", "share", "publish", "upload", "send", "tweet"}
 
 
 class IntentAgent:
-    """Classifies a user query into one of four intent categories."""
-
     def __init__(self, llm_service: OllamaService) -> None:
         self.llm = llm_service
 
     async def classify(self, query: str) -> str:
-        """Return the intent category for *query*.
+        """Return intent: news_query | post_request | news_then_post | other."""
+        q_lower = query.lower()
 
-        Categories:
-            - ``news_query``    – user wants to read tech news.
-            - ``post_request``  – user wants to post to LinkedIn or Facebook directly.
-            - ``news_then_post``– user wants news fetched, summarised, then posted.
-            - ``other``         – anything else.
-        """
-        prompt = f"""You are an intent classifier. Classify the user's request into exactly one of these categories:
+        has_search = any(kw in q_lower for kw in _SEARCH_KEYWORDS)
+        has_post   = any(kw in q_lower for kw in _POST_KEYWORDS)
 
-- news_query      : user asks for latest tech news only (e.g. "What is the latest news in AI?")
-- post_request    : user asks to post something on LinkedIn or Facebook (e.g. "Post this to Facebook")
-- news_then_post  : user wants news searched, summarized, then posted (e.g. "Find ML news and post on Facebook")
-- other           : anything else
+        # Strong heuristic: if both search and post keywords appear, it's news_then_post
+        if has_search and has_post:
+            logger.info("Heuristic: both search and post keywords → news_then_post")
+            return "news_then_post"
+
+        # Use LLM for fine-grained classification only when ambiguous
+        prompt = f"""You are an intent classifier. Classify the user's request into exactly one category:
+
+- news_query      : user ONLY wants to hear/read recent tech news. No mention of posting.
+- post_request    : user wants to publish specific content to social media (they provide the content).
+- news_then_post  : user explicitly asks to BOTH search for news AND post it to social media.
+- other           : anything else — chat, questions about the bot, jokes, etc.
+
+Examples:
+"What's new in AI?" → news_query
+"Latest machine learning news" → news_query
+"Find ML news" → news_query
+"Post this to LinkedIn: Hello world" → post_request
+"Share on Facebook: Check this out" → post_request
+"Find AI news and post it to LinkedIn" → news_then_post
+"Search ML news and share on Facebook" → news_then_post
+"Search ML news and share on Twitter" → news_then_post
+"Tell me about yourself" → other
+"How are you?" → other
+"Hi" → other
 
 User query: "{query}"
 
-Rules:
-1. Reply with ONLY the category name – no punctuation, no quotes, no explanation.
-2. If unsure, reply: other
+Reply with ONLY the category name — no punctuation, no explanation.
 """
         raw = await self.llm.generate(prompt, temperature=0.1)
-
-        # Normalise: strip whitespace, quotes, punctuation, lowercase
         intent = _CLEAN_RE.sub("", raw).lower()
 
-        # The LLM sometimes returns the category inside a longer phrase —
-        # try to extract a known intent token if exact match fails.
         if intent not in _VALID_INTENTS:
             for candidate in _VALID_INTENTS:
                 if candidate in raw.lower():
                     intent = candidate
                     break
             else:
-                logger.warning("Unrecognised intent %r from LLM – defaulting to 'other'", raw)
+                logger.warning("Unrecognised intent %r → default 'other'", raw)
                 intent = "other"
 
         logger.info("Classified intent: %r → %r", query[:60], intent)
         return intent
 
-    def detect_platform(self, query: str) -> str:
-        """Detect which social platform the user wants to post to.
-
-        Uses a word-boundary regex to avoid false positives such as
-        "feedback", "buffer", or "combat" matching "fb" or "face".
-
-        Returns:
-            - ``'facebook'`` if the query explicitly mentions Facebook or the
-              abbreviation ``fb`` as a standalone word.
-            - ``'linkedin'`` otherwise (safe default).
-        """
+    def detect_platforms(self, query: str) -> List[str]:
+        """Return list of platforms mentioned: 'linkedin', 'facebook', 'twitter'."""
+        platforms = []
+        if _LINKEDIN_RE.search(query):
+            platforms.append("linkedin")
         if _FACEBOOK_RE.search(query):
-            logger.info("Detected platform: Facebook")
-            return "facebook"
-        logger.info("Detected platform: LinkedIn (default)")
-        return "linkedin"
+            platforms.append("facebook")
+        if _TWITTER_RE.search(query):
+            platforms.append("twitter")
+        if not platforms:
+            platforms.append("linkedin")  # default
+        logger.debug("Detected platforms for '%s': %s", query[:50], platforms)
+        return platforms
+
+    # Legacy method (kept for compatibility)
+    def detect_platform(self, query: str) -> str:
+        platforms = self.detect_platforms(query)
+        if len(platforms) > 1:
+            return "both"
+        return platforms[0]

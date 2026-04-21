@@ -3,8 +3,7 @@ from services.ollama_service import OllamaService
 
 logger = logging.getLogger(__name__)
 
-_MIN_SUMMARY_LENGTH = 30
-
+_MIN_SUMMARY_LENGTH = 100   
 
 class SummarizerAgent:
     _summary_cache = {}  # simple in‑memory cache
@@ -26,19 +25,18 @@ class SummarizerAgent:
             logger.warning("Article '%s' has no body/description – skipping", title)
             return ""
 
-        if len(content) > 3000:
-            content = content[:3000] + "…"
+        # UPDATED: increased content length limit to 4000 chars
+        if len(content) > 4000:
+            content = content[:4000] + "…"
 
-        # Added strict XML boundaries to avoid prompt injection from untrusted web data
+        # UPDATED: prompt asks for 4-5 detailed sentences
         prompt = f"""You are a professional tech journalist. 
-Summarize the news article provided in the <article> tags below in exactly 2-3 sentences.
-Focus on: (1) what happened, (2) why it matters, (3) any notable figures or numbers.
+Write a detailed summary of the news article below in 4-5 sentences.
+Include key facts, context, and any notable quotes or figures.
 Write in plain English. Do NOT start with "This article" or "The article".
 
-<article>
-<title>{title}</title>
-<content>{content}</content>
-</article>
+Title: {title}
+Content: {content}
 
 Summary:"""
 

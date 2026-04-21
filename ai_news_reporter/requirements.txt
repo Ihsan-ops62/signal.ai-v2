@@ -11,3 +11,8 @@ edge-tts
 faster-whisper
 ctranslate2
 python-dotenv
+pydub
+websockets
+python-jose[cryptography]
+passlib[bcrypt]
+bcrypt

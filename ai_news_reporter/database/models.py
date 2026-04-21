@@ -21,6 +21,7 @@ class UserQuery(BaseModel):
     query_text: str
     intent: str
     response: str
+    user_id: Optional[str] = None   # NEW: associate query with authenticated user
     created_at: datetime = Field(default_factory=_now_utc)
 
 
