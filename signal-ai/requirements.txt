@@ -1,0 +1,50 @@
+# Web Framework
+fastapi
+uvicorn[standard]
+python-multipart
+
+# Database
+motor
+pymongo
+
+# LLM & AI
+openai
+ollama
+
+# Social Media
+tweepy
+aiohttp
+
+# Caching & Queues
+redis
+celery
+
+# Message Queue
+aiokafka
+
+# Security & Auth
+python-jose[cryptography]
+passlib[bcrypt]
+cryptography
+pydantic-settings
+pydantic[email]
+
+# Monitoring & Logging
+prometheus-client
+python-json-logger
+# Utils
+python-dotenv
+pydantic
+httpx
+requests
+
+# Development
+pytest
+pytest-asyncio
+pytest-cov
+black
+flake8
+mypy
+
+# Production Server
+gunicorn

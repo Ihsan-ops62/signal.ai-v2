@@ -1,0 +1,189 @@
+version: '3.9'
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:16-alpine
+    container_name: signal-ai-postgres
+    environment:
+      POSTGRES_USER: signal_user
+      POSTGRES_PASSWORD: secure_password
+      POSTGRES_DB: signal_ai
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U signal_user"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - signal-ai-network
+
+  # MongoDB
+  mongodb:
+    image: mongo:7.0
+    container_name: signal-ai-mongodb
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: signal_user
+      MONGO_INITDB_ROOT_PASSWORD: secure_password
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongodb_data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - signal-ai-network
+
+  # Redis Cache
+  redis:
+    image: redis:7-alpine
+    container_name: signal-ai-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - signal-ai-network
+
+  # Kafka
+  kafka:
+    image: confluentinc/cp-kafka:7.5.0
+    container_name: signal-ai-kafka
+    depends_on:
+      - zookeeper
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,PLAINTEXT_HOST://localhost:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+    ports:
+      - "9092:9092"
+      - "29092:29092"
+    networks:
+      - signal-ai-network
+
+  # Zookeeper (for Kafka)
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.5.0
+    container_name: signal-ai-zookeeper
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+    ports:
+      - "2181:2181"
+    networks:
+      - signal-ai-network
+
+  # Ollama LLM Service
+  ollama:
+    image: ollama/ollama:latest
+    container_name: signal-ai-ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    environment:
+      - OLLAMA_HOST=0.0.0.0:11434
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:11434/api/tags"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - signal-ai-network
+
+  # FastAPI Application
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: signal-ai-api
+    depends_on:
+      postgres:
+        condition: service_healthy
+      mongodb:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      kafka:
+        condition: service_started
+      ollama:
+        condition: service_healthy
+    environment:
+      DATABASE__POSTGRES_URL: "postgresql://signal_user:secure_password@postgres:5432/signal_ai"
+      DATABASE__MONGODB_URL: "mongodb://signal_user:secure_password@mongodb:27017"
+      CACHE__REDIS_URL: "redis://redis:6379/0"
+      QUEUE__CELERY_BROKER: "redis://redis:6379/1"
+      QUEUE__CELERY_BACKEND: "redis://redis:6379/2"
+      LLM__OLLAMA_BASE_URL: "http://ollama:11434"
+      ENVIRONMENT: "production"
+      DEBUG: "false"
+    ports:
+      - "8000:8000"
+    volumes:
+      - .:/app
+    networks:
+      - signal-ai-network
+    command: uvicorn api.main:app --host 0.0.0.0 --port 8000
+
+  # Celery Worker
+  celery-worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: signal-ai-celery
+    depends_on:
+      - redis
+      - mongodb
+      - ollama
+    environment:
+      DATABASE__POSTGRES_URL: "postgresql://signal_user:secure_password@postgres:5432/signal_ai"
+      DATABASE__MONGODB_URL: "mongodb://signal_user:secure_password@mongodb:27017"
+      QUEUE__CELERY_BROKER: "redis://redis:6379/1"
+      QUEUE__CELERY_BACKEND: "redis://redis:6379/2"
+      LLM__OLLAMA_BASE_URL: "http://ollama:11434"
+      ENVIRONMENT: "production"
+    volumes:
+      - .:/app
+    networks:
+      - signal-ai-network
+    command: celery -A services.queue.celery_app worker --loglevel=info
+
+  # Celery Beat (Scheduler)
+  celery-beat:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: signal-ai-beat
+    depends_on:
+      - redis
+    environment:
+      QUEUE__CELERY_BROKER: "redis://redis:6379/1"
+      QUEUE__CELERY_BACKEND: "redis://redis:6379/2"
+    volumes:
+      - .:/app
+    networks:
+      - signal-ai-network
+    command: celery -A services.queue.celery_app beat --loglevel=info
+
+volumes:
+  postgres_data:
+  mongodb_data:
+  redis_data:
+  ollama_data:
+
+networks:
+  signal-ai-network:
+    driver: bridge
