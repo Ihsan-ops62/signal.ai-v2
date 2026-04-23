@@ -35,7 +35,8 @@ The main dashboard is split into three areas:
 
 Access the Settings modal via your avatar. Here, you can manually connect or disconnect your social media accounts. Signal.AI uses manual token management for LinkedIn and Facebook, and standard OAuth for Twitter (X).
 
-![Connection Settings](./signal%2002.png)
+![Post Confirmation Request](./signal%2004.png)
+
 
 ### 3. Pipeline in Action (Searching & Summarizing)
 
@@ -43,9 +44,6 @@ When you ask for news (e.g., *"latest news about AI"*), the intention is classif
 
 ![Live Pipeline Tracking](./signal03.png)
 
-### 4. Human-in-the-Loop Confirmation
-
-Signal.AI will never post destructive actions without your permission. After summarizing and formatting a post based on your connected platforms, the agent pauses the workflow and asks for confirmation.
 
 ![Post Confirmation Request](./signal%2004.png)
 
