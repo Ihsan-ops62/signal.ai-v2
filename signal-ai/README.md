@@ -4,7 +4,7 @@ Signal.AI is an advanced, autonomous agent platform designed to act as your pers
 
 By integrating human-in-the-loop confirmation, Signal.AI combines the speed of automation with human editorial control.
 
-![Signal.AI Workspace](./signal01.png)
+(signa01.png)
 
 ## Core Capabilities
 
@@ -28,19 +28,19 @@ The main dashboard is split into three areas:
 * **Main Chat:** The live interaction viewport and input area.
 * **Right Sidebar:** View real-time agent pipeline progress, interaction stats, and recent successful posts.
 
-![Active Chat View](./signal01.png)
+(signal02.png)
 
 ### 2. Connected Accounts (Settings)
 
 Access the Settings modal via your avatar. Here, you can manually connect or disconnect your social media accounts. Signal.AI uses manual token management for LinkedIn and Facebook, and standard OAuth for Twitter (X).
 
-![Connection Settings](./signal%2002.png)
+(signal03.png)
 
 ### 3. Pipeline in Action (Searching & Summarizing)
 
 When you ask for news (e.g., *"latest news about AI"*), the intention is classified. You can see the **Agent Pipeline** on the right move from Standby to Step 2 (**Search Web**) and Step 3 (**Summarize**). The AI streams tokens (words) to the chat as they are generated.
 
-![Live Pipeline Tracking](./signal03.png)
+(signal04.png)
 
 ### 4. Human-in-the-Loop Confirmation
 
