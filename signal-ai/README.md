@@ -45,8 +45,6 @@ When you ask for news (e.g., *"latest news about AI"*), the intention is classif
 ![Live Pipeline Tracking](./signal03.png)
 
 
-![Post Confirmation Request](./signal%2004.png)
-
 You can click **Post** to publish, **Cancel** to abort, or simply tell the agent to *"reformat the post"* to try again.
 
 ---
