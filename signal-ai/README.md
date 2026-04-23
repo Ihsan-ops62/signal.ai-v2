@@ -4,7 +4,7 @@ Signal.AI is an advanced, autonomous agent platform designed to act as your pers
 
 By integrating human-in-the-loop confirmation, Signal.AI combines the speed of automation with human editorial control.
 
-![Signal.AI Workspace](./signal01.png)
+![Signal.AI Workspace](./signal1.png)
 
 ## Core Capabilities
 
