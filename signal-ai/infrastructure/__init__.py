@@ -1,4 +1,3 @@
-"""Monitoring package."""
-from infrastructure.monitoring.logging import setup_logging
+from infrastructure.database.mongodb import MongoDB
 
-__all__ = ["setup_logging"]
+__all__ = ["MongoDB"]

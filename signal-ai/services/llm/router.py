@@ -1,6 +1,4 @@
-"""
-services/llm/router.py – LLM router with optional fallback.
-"""
+
 import logging
 from typing import AsyncIterator, Optional
 from services.llm.base import BaseLLMService

@@ -1,0 +1,1086 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Signal.AI – Voice Tech Reporter</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Mono:ital,wght@0,300;0,400;0,500;1,300&family=Instrument+Serif:ital@0;1&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg: #0a0b0e;
+      --bg-panel: #111318;
+      --bg-raised: #181b22;
+      --bg-input: #1c2028;
+      --bg-hover: #1e2230;
+      --border: rgba(255,255,255,0.08);
+      --border-md: rgba(255,255,255,0.15);
+      --text-1: #ffffff;
+      --text-2: #a1a1aa;
+      --text-3: #71717a;
+      --green: #10b981;
+      --green-lt: #34d399;
+      --green-bg: rgba(16, 185, 129, 0.1);
+      --green-bd: rgba(16, 185, 129, 0.2);
+      --blue: #3b82f6;
+      --blue-bg: rgba(59, 130, 246, 0.1);
+      --blue-bd: rgba(59, 130, 246, 0.2);
+      --amber: #f59e0b;
+      --amber-bg: rgba(245, 158, 11, 0.1);
+      --amber-bd: rgba(245, 158, 11, 0.2);
+      --purple: #8b5cf6;
+      --purple-bg: rgba(139, 92, 246, 0.1);
+      --purple-bd: rgba(139, 92, 246, 0.2);
+      --red: #ef4444;
+      --red-bg: rgba(239, 68, 68, 0.1);
+      --red-bd: rgba(239, 68, 68, 0.2);
+      --radius-sm: 6px;
+      --radius: 10px;
+      --radius-lg: 16px;
+      --ff-head: 'Instrument Serif', Georgia, serif;
+      --ff-body: 'Inter', system-ui, sans-serif;
+      --ff-mono: 'DM Mono', 'Fira Code', monospace;
+      --sidebar-w: 260px;
+      --trace-w: 320px;
+    }
+
+    html, body { height: 100%; background: var(--bg); color: var(--text-1); font-family: var(--ff-body); font-size: 14.5px; line-height: 1.6; -webkit-font-smoothing: antialiased; }
+
+    /* ── SHELL ─────────────────────────────────── */
+    .shell {
+      height: 100vh;
+      display: grid;
+      grid-template-rows: 60px 1fr;
+      grid-template-columns: var(--sidebar-w) 1fr var(--trace-w);
+      grid-template-areas: "header header header" "left main right";
+      overflow: hidden;
+    }
+
+    /* ── TOPBAR ────────────────────────────────── */
+    .topbar {
+      grid-area: header;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 24px;
+      background: var(--bg-panel);
+      z-index: 10;
+    }
+    .logo-area { display: flex; align-items: baseline; gap: 10px; }
+    .logo { font-family: var(--ff-head); font-size: 24px; letter-spacing: -0.3px; color: var(--text-1); }
+    .logo em { color: var(--green); font-style: normal; }
+    .logo-tag { font-family: var(--ff-mono); font-size: 10px; letter-spacing: 2px; text-transform: uppercase; color: var(--text-3); }
+    .topbar-right { display: flex; align-items: center; gap: 12px; }
+    .user-chip { display: flex; align-items: center; gap: 8px; background: var(--bg-raised); border: 1px solid var(--border); border-radius: 99px; padding: 4px 14px 4px 6px; font-size: 13px; font-weight: 500; color: var(--text-2); cursor: pointer; transition: all 0.2s;}
+    .user-chip:hover { border-color: var(--blue-bd); background: var(--bg-hover); color: var(--text-1); }
+    .user-avatar { width: 26px; height: 26px; border-radius: 50%; background: linear-gradient(135deg, var(--green), var(--blue)); display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 600; color: white; font-family: var(--ff-mono); }
+    .live-badge { display: flex; align-items: center; gap: 6px; font-family: var(--ff-mono); font-size: 11px; letter-spacing: 0.8px; color: var(--green); text-transform: uppercase; background: var(--green-bg); padding: 4px 10px; border-radius: 6px; border: 1px solid var(--green-bd);}
+    .live-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--green); animation: livepulse 2s infinite; }
+    @keyframes livepulse { 0%,100%{opacity:1;} 50%{opacity:0.3;} }
+    .btn { background: var(--bg-raised); border: 1px solid var(--border); border-radius: var(--radius); padding: 8px 14px; color: var(--text-2); cursor: pointer; font-family: var(--ff-body); font-weight: 500; font-size: 13px; transition: all 0.2s; display: flex; align-items: center; gap: 6px; white-space: nowrap; }
+    .btn:hover { border-color: var(--border-md); color: var(--text-1); background: var(--bg-hover); }
+    .btn.primary { border-color: var(--green-bd); color: var(--green-lt); background: var(--green-bg); }
+    .btn.primary:hover { background: rgba(16, 185, 129, 0.15); border-color: var(--green); }
+    .btn.danger { border-color: var(--red-bd); color: var(--red); background: var(--red-bg); }
+    .btn.danger:hover { background: rgba(239, 68, 68, 0.15); border-color: var(--red); }
+
+    /* ── LEFT SIDEBAR ─────────────────────────── */
+    .sidebar-left {
+      grid-area: left;
+      background: var(--bg-panel);
+      border-right: 1px solid var(--border);
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+    }
+    .sec-label { font-family: var(--ff-mono); font-size: 10px; font-weight: 500; letter-spacing: 1.5px; text-transform: uppercase; color: var(--text-3); padding: 20px 16px 8px; }
+    .sidebar-actions { padding: 0 12px 12px; }
+    .sidebar-btn { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-radius: var(--radius); border: 1px solid var(--border); background: var(--bg-raised); color: var(--text-1); cursor: pointer; font-family: var(--ff-body); font-weight: 500; font-size: 14px; transition: all 0.2s; width: 100%; text-align: left; }
+    .sidebar-btn:hover { background: var(--bg-hover); border-color: var(--border-md); }
+    .sidebar-divider { height: 1px; background: var(--border); margin: 8px 16px; }
+    
+    .voice-toggle-row { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; }
+    .voice-toggle-label { font-size: 13px; color: var(--text-2); font-weight: 500;}
+    .toggle { position: relative; width: 36px; height: 20px; }
+    .toggle input { opacity: 0; width: 0; height: 0; }
+    .toggle-slider { position: absolute; inset: 0; background: var(--bg-raised); border: 1px solid var(--border-md); border-radius: 99px; cursor: pointer; transition: 0.2s; }
+    .toggle-slider::before { content: ''; position: absolute; width: 14px; height: 14px; left: 2px; top: 2px; background: var(--text-3); border-radius: 50%; transition: 0.2s; }
+    input:checked + .toggle-slider { background: var(--green-bg); border-color: var(--green-bd); }
+    input:checked + .toggle-slider::before { transform: translateX(16px); background: var(--green); }
+
+    .session-list { display: flex; flex-direction: column; gap: 4px; padding: 0 12px 20px; flex: 1; }
+    .session-item { display: flex; align-items: center; border-radius: var(--radius-sm); cursor: pointer; transition: all 0.2s; padding: 8px 10px; border: 1px solid transparent; }
+    .session-item:hover { background: var(--bg-hover); border-color: var(--border); }
+    .session-item.active { background: var(--blue-bg); border-color: var(--blue-bd); }
+    .session-item-text { flex: 1; font-size: 13px; color: var(--text-2); overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-weight: 400; }
+    .session-item:hover .session-item-text, .session-item.active .session-item-text { color: var(--text-1); font-weight: 500; }
+    .session-del { opacity: 0; color: var(--text-3); font-size: 14px; transition: all 0.2s; background: transparent; border: none; cursor: pointer; padding: 2px 6px; border-radius: 4px;}
+    .session-item:hover .session-del { opacity: 1; }
+    .session-del:hover { background: var(--red-bg); color: var(--red); }
+
+    /* ── RIGHT SIDEBAR – AGENT TRACE ───────────── */
+    .sidebar-right {
+      grid-area: right;
+      background: var(--bg-panel);
+      border-left: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      overflow-y: hidden;
+    }
+    
+    .trace-top { padding: 16px; border-bottom: 1px solid var(--border); }
+    .trace-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
+    .trace-title { font-family: var(--ff-mono); font-size: 10px; font-weight: 500; letter-spacing: 1.5px; text-transform: uppercase; color: var(--text-3); }
+    .stats-row { display: flex; gap: 8px; }
+    .stat-chip { flex: 1; background: var(--bg-raised); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px; text-align: center; }
+    .stat-val { font-family: var(--ff-mono); font-size: 20px; font-weight: 400; color: var(--text-1); }
+    .stat-lbl { font-family: var(--ff-mono); font-size: 9px; letter-spacing: 1px; color: var(--text-3); text-transform: uppercase; margin-top: 4px; }
+
+    .right-scroll-area { flex: 1; overflow-y: auto; padding-bottom: 20px; }
+    .right-scroll-area::-webkit-scrollbar { width: 4px; }
+    .right-scroll-area::-webkit-scrollbar-thumb { background: var(--border-md); border-radius: 2px; }
+
+    .pipeline { padding: 8px 16px 16px; }
+    .pipe-step { display: flex; align-items: flex-start; gap: 12px; padding: 8px 0; position: relative; }
+    .pipe-step:not(:last-child)::after { content: ''; position: absolute; left: 14px; top: 40px; width: 2px; height: calc(100% - 20px); background: var(--border); }
+    .pipe-num { width: 30px; height: 30px; border-radius: 50%; border: 1px solid var(--border-md); background: var(--bg-raised); display: flex; align-items: center; justify-content: center; font-family: var(--ff-mono); font-size: 11px; color: var(--text-3); flex-shrink: 0; transition: all 0.3s; z-index: 2; }
+    .pipe-num.done { border-color: var(--green); color: var(--green); background: var(--green-bg); }
+    .pipe-num.active { border-color: var(--blue); color: var(--blue); background: var(--blue-bg); box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.1); }
+    .pipe-info { padding-top: 4px; }
+    .pipe-name { font-size: 13px; font-weight: 600; color: var(--text-1); }
+    .pipe-desc { font-size: 12px; color: var(--text-3); margin-top: 2px; }
+
+    .recent-posts-list { padding: 0 16px 16px; display: flex; flex-direction: column; gap: 10px; }
+    .recent-post-card { background: var(--bg-raised); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px; transition: border-color 0.2s; }
+    .recent-post-card:hover { border-color: var(--border-md); }
+    .rp-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
+    .rp-plat { font-family: var(--ff-mono); font-size: 10px; font-weight: 500; text-transform: uppercase; color: var(--text-1); background: var(--blue-bg); color: var(--blue); padding: 2px 6px; border-radius: 4px; border: 1px solid var(--blue-bd); }
+    .rp-time { font-family: var(--ff-mono); font-size: 10px; color: var(--text-3); }
+    .rp-text { font-size: 12px; color: var(--text-2); display: -webkit-box; -webkit-line-clamp: 3; line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; line-height: 1.5; }
+
+    .trace-log { padding: 0 16px 16px; display: flex; flex-direction: column; gap: 6px; }
+    .trace-entry { font-family: var(--ff-mono); font-size: 11px; color: var(--text-3); padding: 6px 10px; border-radius: 6px; border-left: 2px solid var(--border); background: var(--bg-raised); }
+    .trace-entry.info { border-left-color: var(--blue); color: var(--text-2); }
+    .trace-entry.success { border-left-color: var(--green); color: var(--green-lt); }
+    .trace-entry.err { border-left-color: var(--red); color: var(--red); }
+    .trace-empty { padding: 20px; text-align: center; font-size: 12px; color: var(--text-3); font-style: italic; }
+
+    /* ── MAIN AREA ─────────────────────────────── */
+    .main-area { grid-area: main; display: flex; flex-direction: column; overflow: hidden; background: var(--bg); position: relative;}
+    
+    .main-area::before {
+        content: ''; position: absolute; top: 0; left: 0; right: 0; height: 300px;
+        background: radial-gradient(circle at 50% 0%, rgba(59, 130, 246, 0.05) 0%, transparent 70%); pointer-events: none;
+    }
+
+    .chat-viewport { flex: 1; overflow-y: auto; padding: 30px 40px; display: flex; flex-direction: column; gap: 24px; scroll-behavior: smooth; z-index: 1; }
+    .chat-viewport::-webkit-scrollbar { width: 6px; }
+    .chat-viewport::-webkit-scrollbar-thumb { background: var(--border-md); border-radius: 4px; }
+
+    /* Chat messages */
+    .msg { display: flex; gap: 16px; max-width: 85%; animation: fadeup 0.3s ease forwards; opacity: 0;}
+    @keyframes fadeup { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+    .msg.user { flex-direction: row-reverse; align-self: flex-end; }
+    .msg.ai { align-self: flex-start; }
+    
+    .msg-avatar { width: 36px; height: 36px; border-radius: 12px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; margin-top: 4px; box-shadow: 0 4px 10px rgba(0,0,0,0.2); }
+    .msg.user .msg-avatar { background: linear-gradient(135deg, var(--blue), var(--purple)); color: white; font-family: var(--ff-mono); font-size: 14px; font-weight: 600; }
+    .msg.ai .msg-avatar { background: var(--bg-raised); border: 1px solid var(--border-md); font-size: 18px; }
+    
+    .msg-body { display: flex; flex-direction: column; }
+    .msg.user .msg-body { align-items: flex-end; }
+    
+    .msg-bubble { background: var(--bg-panel); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 16px 20px; font-size: 15px; line-height: 1.6; color: var(--text-1); box-shadow: 0 4px 20px rgba(0,0,0,0.15); }
+    .msg.user .msg-bubble { background: var(--blue-bg); border-color: var(--blue-bd); border-top-right-radius: 4px; }
+    .msg.ai .msg-bubble { border-top-left-radius: 4px; }
+    
+    .msg-bubble h1, .msg-bubble h2 { font-weight: 600; font-size: 18px; margin-bottom: 12px; color: var(--text-1); border-bottom: 1px solid var(--border); padding-bottom: 6px;}
+    .msg-bubble h3 { font-size: 15px; font-weight: 600; margin: 16px 0 8px; }
+    .msg-bubble p { margin-bottom: 12px; }
+    .msg-bubble p:last-child { margin-bottom: 0; }
+    .msg-bubble ul, .msg-bubble ol { padding-left: 20px; margin: 12px 0; }
+    .msg-bubble li { margin-bottom: 6px; }
+    .msg-bubble code { background: var(--bg-raised); border: 1px solid var(--border); border-radius: 6px; padding: 2px 6px; font-family: var(--ff-mono); font-size: 13px; color: var(--green-lt); }
+    .msg-bubble pre code { display: block; padding: 14px; overflow-x: auto; background: #000; border-radius: 8px; border: 1px solid var(--border-md);}
+    .msg-bubble strong { color: #fff; font-weight: 600; }
+    .msg-bubble a { color: var(--blue); text-decoration: none; font-weight: 500; }
+    .msg-bubble a:hover { text-decoration: underline; }
+    
+    .msg-meta { font-family: var(--ff-mono); font-size: 11px; color: var(--text-3); margin-top: 8px; padding: 0 4px; }
+
+    /* Typing indicator */
+    .typing-bubble { background: var(--bg-panel); border: 1px solid var(--border); border-radius: var(--radius-lg); border-top-left-radius: 4px; padding: 16px 20px; display: inline-flex; gap: 6px; align-items: center; box-shadow: 0 4px 20px rgba(0,0,0,0.15);}
+    .typing-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--text-3); animation: blink 1.4s infinite both; }
+    .typing-dot:nth-child(1) { animation-delay: 0s; }
+    .typing-dot:nth-child(2) { animation-delay: 0.2s; }
+    .typing-dot:nth-child(3) { animation-delay: 0.4s; }
+    @keyframes blink { 0%, 80%, 100% { opacity: 0.3; transform: scale(0.8); } 40% { opacity: 1; transform: scale(1.2); } }
+
+    /* Progress */
+    .progress-strip { display: flex; align-items: center; gap: 10px; font-family: var(--ff-mono); font-size: 12px; color: var(--text-2); padding: 8px 0; }
+    .progress-spinner { width: 16px; height: 16px; border: 2px solid var(--border-md); border-top-color: var(--blue); border-radius: 50%; animation: spin 0.8s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* Confirm Row */
+    .confirm-row { display: flex; gap: 10px; margin-top: 14px; }
+    .confirm-yes { background: var(--green); border: 1px solid var(--green); color: white; padding: 10px 20px; border-radius: var(--radius); cursor: pointer; font-family: var(--ff-body); font-weight: 500; font-size: 14px; transition: all 0.2s; box-shadow: 0 2px 10px rgba(16, 185, 129, 0.2); }
+    .confirm-yes:hover { background: #059669; }
+    .confirm-no { background: var(--bg-raised); border: 1px solid var(--border-md); color: var(--text-1); padding: 10px 20px; border-radius: var(--radius); cursor: pointer; font-family: var(--ff-body); font-weight: 500; font-size: 14px; transition: all 0.2s; }
+    .confirm-no:hover { background: var(--bg-hover); border-color: var(--text-3); }
+
+    /* Welcome screen */
+    .welcome { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 24px; padding: 40px; text-align: center; }
+    .welcome-icon { font-size: 56px; filter: drop-shadow(0 0 20px rgba(255,255,255,0.1)); }
+    .welcome-title { font-weight: 600; font-size: 32px; color: var(--text-1); letter-spacing: -0.5px;}
+    .welcome-sub { color: var(--text-2); font-size: 16px; max-width: 460px; line-height: 1.6; }
+    .chips { display: flex; flex-wrap: wrap; gap: 12px; justify-content: center; margin-top: 10px; max-width: 600px;}
+    .chip { background: var(--bg-panel); border: 1px solid var(--border-md); border-radius: 99px; padding: 10px 18px; font-size: 14px; font-weight: 500; color: var(--text-2); cursor: pointer; transition: all 0.2s; box-shadow: 0 2px 8px rgba(0,0,0,0.2); }
+    .chip:hover { border-color: var(--blue); color: var(--blue); background: var(--blue-bg); transform: translateY(-2px);}
+
+    /* Input area */
+    .input-area { padding: 0 40px 30px; background: transparent; display: flex; flex-direction: column; gap: 8px; z-index: 10; }
+    .input-row { display: flex; align-items: flex-end; gap: 12px; background: var(--bg-panel); border: 1px solid var(--border-md); border-radius: var(--radius-lg); padding: 8px; box-shadow: 0 8px 30px rgba(0,0,0,0.4); transition: border-color 0.2s; }
+    .input-row:focus-within { border-color: var(--blue); box-shadow: 0 8px 30px rgba(59, 130, 246, 0.15); }
+    
+    #chatInput { flex: 1; background: transparent; border: none; outline: none; color: var(--text-1); font-family: var(--ff-body); font-size: 15px; padding: 12px 16px; resize: none; max-height: 200px; min-height: 48px; line-height: 1.6; }
+    #chatInput::placeholder { color: var(--text-3); }
+    
+    .action-btns { display: flex; gap: 8px; padding: 4px; }
+    .mic-btn { background: transparent; border: none; border-radius: var(--radius); width: 40px; height: 40px; cursor: pointer; color: var(--text-3); display: flex; align-items: center; justify-content: center; transition: all 0.2s; font-size: 20px; }
+    .mic-btn:hover { background: var(--bg-raised); color: var(--text-1); }
+    .mic-btn.recording { background: var(--red-bg); color: var(--red); animation: pulse-red 1.5s infinite; }
+    @keyframes pulse-red { 0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4); } 70% { box-shadow: 0 0 0 10px rgba(239, 68, 68, 0); } 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); } }
+    
+    .send-btn { background: var(--text-1); color: var(--bg); border: none; border-radius: var(--radius); width: 40px; height: 40px; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.2s; }
+    .send-btn:hover:not(:disabled) { background: var(--text-2); transform: scale(1.05); }
+    .send-btn:disabled { background: var(--bg-raised); color: var(--text-3); cursor: not-allowed; }
+    .send-btn svg { width: 18px; height: 18px; }
+    
+    .input-footer { display: flex; align-items: center; justify-content: space-between; font-family: var(--ff-mono); font-size: 11px; color: var(--text-3); padding: 0 10px; }
+    .kbd { background: var(--bg-raised); border: 1px solid var(--border); border-radius: 4px; padding: 2px 6px; font-size: 10px; }
+
+    /* Modals & Overlays */
+    .hidden { display: none !important; }
+    .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.8); display: flex; align-items: center; justify-content: center; z-index: 100; opacity: 0; pointer-events: none; transition: opacity 0.2s; backdrop-filter: blur(4px); }
+    .modal-overlay.open { opacity: 1; pointer-events: all; }
+    .modal { background: var(--bg-panel); border: 1px solid var(--border-md); border-radius: var(--radius-lg); width: 480px; max-width: 95vw; max-height: 90vh; overflow-y: auto; animation: modal-in 0.3s cubic-bezier(0.16, 1, 0.3, 1); box-shadow: 0 20px 40px rgba(0,0,0,0.4); }
+    @keyframes modal-in { from { transform: translateY(20px) scale(0.95); opacity: 0; } to { transform: none; opacity: 1; } }
+    .modal-head { padding: 24px 24px 16px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--border); }
+    .modal-title { font-weight: 600; font-size: 18px; }
+    .modal-close { background: transparent; border: none; color: var(--text-3); cursor: pointer; font-size: 24px; transition: color 0.2s; }
+    .modal-close:hover { color: var(--text-1); }
+    .modal-body { padding: 24px; display: flex; flex-direction: column; gap: 16px; }
+    .modal-footer { display: flex; justify-content: flex-end; gap: 12px; padding: 16px 24px 24px; border-top: 1px solid var(--border); }
+    
+    #authOverlay { position: fixed; inset: 0; background: var(--bg); display: flex; align-items: center; justify-content: center; z-index: 200; }
+    .auth-card { background: var(--bg-panel); border: 1px solid var(--border-md); border-radius: var(--radius-lg); width: 400px; padding: 40px; display: flex; flex-direction: column; gap: 24px; box-shadow: 0 20px 40px rgba(0,0,0,0.4); }
+    .auth-logo { font-family: var(--ff-head); font-size: 32px; text-align: center; }
+    .auth-logo em { color: var(--blue); font-style: normal; }
+    .auth-submit { background: var(--text-1); border: none; border-radius: var(--radius); padding: 14px; color: var(--bg); font-size: 15px; font-weight: 600; cursor: pointer; transition: all 0.2s; }
+    .auth-submit:hover { background: var(--text-2); }
+    .auth-field label { font-size: 12px; color: var(--text-3); font-weight: 500; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px; display: block;}
+    .auth-field input { background: var(--bg-input); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 12px 14px; color: var(--text-1); font-size: 15px; outline: none; transition: border-color 0.2s; width: 100%;}
+    .auth-field input:focus { border-color: var(--blue); box-shadow: 0 0 0 3px var(--blue-bg);}
+    
+    .settings-row { display: flex; align-items: center; justify-content: space-between; padding: 12px 0; border-bottom: 1px solid var(--border); }
+    .settings-row-label { font-size: 14px; font-weight: 500; color: var(--text-1); }
+    .settings-row-sub { font-size: 12px; color: var(--text-3); margin-top: 4px; }
+    .modal-input { width: 100%; background: var(--bg-input); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 12px; color: var(--text-1); font-family: var(--ff-mono); font-size: 13px; outline: none; }
+  </style>
+</head>
+<body>
+
+<div id="authOverlay">
+    <div class="auth-card">
+      <div class="auth-logo">Signal<em>.</em>AI</div>
+      <div style="text-align: center; color: var(--text-3); font-size: 13px; margin-top:-10px;">VOICE TECH REPORTER</div>
+      <div style="display:flex; background:var(--bg-raised); padding:4px; border-radius:8px; gap:4px;">
+        <button id="tabLogin" style="flex:1; padding:8px; background:var(--bg-panel); border:1px solid var(--border); border-radius:6px; color:#fff; cursor:pointer;" onclick="switchAuthTab('login')">Sign In</button>
+        <button id="tabRegister" style="flex:1; padding:8px; background:transparent; border:none; color:var(--text-3); cursor:pointer;" onclick="switchAuthTab('register')">Register</button>
+      </div>
+      <div id="authLoginForm" style="display:flex; flex-direction:column; gap:16px;">
+        <div class="auth-field"><label>USERNAME</label><input type="text" id="loginUser"></div>
+        <div class="auth-field"><label>PASSWORD</label><input type="password" id="loginPass"></div>
+        <button class="auth-submit" onclick="doLogin()">Sign In</button>
+      </div>
+      <div id="authRegisterForm" class="hidden" style="display:flex; flex-direction:column; gap:16px;">
+        <div class="auth-field"><label>USERNAME</label><input type="text" id="regUser"></div>
+        <div class="auth-field"><label>EMAIL</label><input type="email" id="regEmail"></div>
+        <div class="auth-field"><label>PASSWORD</label><input type="password" id="regPass"></div>
+        <button class="auth-submit" onclick="doRegister()">Create Account</button>
+      </div>
+      <div id="authErr" class="hidden" style="color:var(--red); text-align:center; font-size:13px; background:var(--red-bg); padding:10px; border-radius:6px;"></div>
+    </div>
+</div>
+
+<div class="modal-overlay" id="settingsModal">
+    <div class="modal">
+      <div class="modal-head">
+        <span class="modal-title">Settings</span>
+        <button class="modal-close" onclick="closeModal('settingsModal')">×</button>
+      </div>
+      <div class="modal-body">
+        <div class="settings-row">
+            <div><div class="settings-row-label">Signed in as</div><div class="settings-row-sub" id="settingsUsername">—</div></div>
+        </div>
+        <div class="settings-row">
+            <div><div class="settings-row-label">LinkedIn</div><div class="settings-row-sub" id="settingsLiStatus">—</div></div>
+            <div style="display:flex; gap:8px;">
+                <button class="btn primary" onclick="openLinkedInModal(); closeModal('settingsModal')">Connect</button>
+                <button class="btn danger" id="settingsLiDisconnect" onclick="disconnectLinkedIn()" style="display:none">Disconnect</button>
+            </div>
+        </div>
+        <div class="settings-row">
+            <div><div class="settings-row-label">Facebook</div><div class="settings-row-sub" id="settingsFbStatus">—</div></div>
+            <div style="display:flex; gap:8px;">
+                <button class="btn primary" onclick="openFacebookModal(); closeModal('settingsModal')">Connect</button>
+                <button class="btn danger" id="settingsFbDisconnect" onclick="disconnectFacebook()" style="display:none">Disconnect</button>
+            </div>
+        </div>
+        <div class="settings-row" style="border:none;">
+            <div><div class="settings-row-label">Twitter</div><div class="settings-row-sub" id="settingsTwStatus">—</div></div>
+            <div style="display:flex; gap:8px;">
+                <button class="btn primary" onclick="openTwitterModal(); closeModal('settingsModal')">Connect</button>
+                <button class="btn danger" id="settingsTwDisconnect" onclick="disconnectTwitter()" style="display:none">Disconnect</button>
+            </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn danger" onclick="doSignOut()">Sign Out</button>
+        <button class="btn" onclick="closeModal('settingsModal')">Close</button>
+      </div>
+    </div>
+</div>
+
+<div class="modal-overlay" id="linkedinModal">
+  <div class="modal">
+    <div class="modal-head">
+      <span class="modal-title">Connect LinkedIn</span>
+      <button class="modal-close" onclick="closeModal('linkedinModal')">×</button>
+    </div>
+    <div class="modal-body">
+      <div>
+        <label style="font-size: 12px; color: var(--text-3); margin-bottom: 6px; display: block;">ACCESS TOKEN</label>
+        <input type="password" class="modal-input" id="liTokenInput" placeholder="Paste your LinkedIn access_token here…">
+      </div>
+      <div id="liConnectErr" class="hidden" style="color:var(--red); font-size:13px; background:var(--red-bg); padding:10px; border-radius:6px;"></div>
+      <div id="liConnectSuccess" style="color:var(--green-lt);font-size:13px;display:none">✓ LinkedIn connected successfully!</div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn" onclick="closeModal('linkedinModal')">Cancel</button>
+      <button class="btn primary" onclick="submitLinkedInToken()">Connect Token</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="facebookModal">
+  <div class="modal">
+    <div class="modal-head">
+      <span class="modal-title">Connect Facebook</span>
+      <button class="modal-close" onclick="closeModal('facebookModal')">×</button>
+    </div>
+    <div class="modal-body">
+      <div>
+        <label style="font-size: 12px; color: var(--text-3); margin-bottom: 6px; display: block;">PAGE ACCESS TOKEN</label>
+        <input type="password" class="modal-input" id="fbTokenInput" placeholder="Paste Facebook Page Access Token">
+      </div>
+      <div>
+        <label style="font-size: 12px; color: var(--text-3); margin-bottom: 6px; display: block;">PAGE ID</label>
+        <input type="text" class="modal-input" id="fbPageIdInput" placeholder="Your Facebook Page ID">
+      </div>
+      <div id="fbConnectErr" class="hidden" style="color:var(--red); font-size:13px; background:var(--red-bg); padding:10px; border-radius:6px;"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn" onclick="closeModal('facebookModal')">Cancel</button>
+      <button class="btn primary" onclick="submitFacebookToken()">Connect</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="twitterModal">
+  <div class="modal">
+    <div class="modal-head">
+      <span class="modal-title">Connect Twitter</span>
+      <button class="modal-close" onclick="closeModal('twitterModal')">×</button>
+    </div>
+    <div class="modal-body">
+      <button class="btn primary" style="width: 100%; justify-content: center;" onclick="startTwitterOAuth()">Connect with Twitter OAuth</button>
+      <div style="text-align: center; color: var(--text-3); font-size: 12px; margin: 10px 0;">— OR MANUAL TOKEN —</div>
+      <div>
+        <label style="font-size: 12px; color: var(--text-3); margin-bottom: 6px; display: block;">ACCESS TOKEN (BEARER)</label>
+        <input type="password" class="modal-input" id="twTokenInput" placeholder="Paste your Twitter Bearer Token">
+      </div>
+      <div id="twConnectErr" class="hidden" style="color:var(--red); font-size:13px; background:var(--red-bg); padding:10px; border-radius:6px;"></div>
+      <div id="twConnectSuccess" style="color:var(--green-lt);font-size:13px;display:none">✓ Twitter connected successfully!</div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn" onclick="closeModal('twitterModal')">Cancel</button>
+      <button class="btn primary" onclick="submitTwitterToken()">Connect Token</button>
+    </div>
+  </div>
+</div>
+
+<div class="shell hidden" id="appShell">
+  <header class="topbar">
+    <div class="logo-area">
+      <div class="logo">Signal<em>.</em>AI</div>
+      <div class="logo-tag">Agent Workspace</div>
+    </div>
+    <div class="topbar-right">
+      <div class="live-badge"><div class="live-dot"></div> Live</div>
+      <div class="user-chip" onclick="openModal('settingsModal'); loadSettingsData()" title="Settings">
+        <div class="user-avatar" id="topbarAvatar">U</div>
+        <span id="topbarUsername">user</span>
+      </div>
+    </div>
+  </header>
+
+  <aside class="sidebar-left">
+    <div class="sidebar-actions" style="padding-top: 20px;">
+      <button class="sidebar-btn" onclick="startNewChat()">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
+        New Chat
+      </button>
+    </div>
+
+    <div class="voice-toggle-row">
+      <span class="voice-toggle-label">🎙 Voice Mode</span>
+      <label class="toggle">
+        <input type="checkbox" id="voiceToggle" onchange="syncVoiceToggleFromSidebar(this.checked)">
+        <span class="toggle-slider"></span>
+      </label>
+    </div>
+
+    <div class="sidebar-divider"></div>
+    <div class="sec-label">Chat History</div>
+    <div class="session-list" id="sessionList">
+      <div style="padding:12px;font-size:13px;color:var(--text-3); text-align:center;">No history yet</div>
+    </div>
+  </aside>
+
+  <main class="main-area">
+    <div class="chat-viewport" id="chatViewport">
+      <div class="welcome" id="welcomeScreen">
+        <div class="welcome-icon">✦</div>
+        <div class="welcome-title">What are we building today?</div>
+        <div class="welcome-sub">I can research tech news, summarize engineering blogs, or auto-publish updates directly to your social platforms.</div>
+        <div class="chips">
+          <div class="chip" onclick="sendSuggestion('Find the latest news on Large Language Models')">Research LLM news</div>
+          <div class="chip" onclick="sendSuggestion('Find recent FastAPI updates and draft a LinkedIn post')">Draft a LinkedIn post</div>
+          <div class="chip" onclick="sendSuggestion('Tweet: Just successfully deployed a multi-agent backend structure!')">Post a quick Tweet</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="input-area">
+      <div class="input-row">
+        <textarea id="chatInput" rows="1" placeholder="Ask an agent or type a command..." onkeydown="handleInputKey(event)" oninput="autoResize(this)"></textarea>
+        <div class="action-btns">
+            <button class="mic-btn" id="micBtn" title="Voice input" onclick="toggleRecording()">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" x2="12" y1="19" y2="22"/></svg>
+            </button>
+            <button class="send-btn" id="sendBtn" onclick="sendMessage()" title="Send">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>
+            </button>
+        </div>
+      </div>
+      <div class="input-footer">
+        <div><kbd class="kbd">Enter</kbd> send &nbsp; <kbd class="kbd">Shift+Enter</kbd> newline <span id="recordingHint" style="color:var(--red); display:none; margin-left:10px;">● Recording...</span></div>
+        <div id="wsStatus">● connected</div>
+      </div>
+    </div>
+  </main>
+
+  <aside class="sidebar-right">
+    <div class="trace-top">
+        <div class="stats-row" id="statsRow">
+        
+        </div>
+    </div>
+
+    <div class="right-scroll-area">
+        <div class="trace-header" style="padding: 16px 16px 0;">
+            <span class="trace-title">Agent Pipeline</span>
+        </div>
+        <div class="pipeline">
+            <div class="pipe-step" id="pipeStep-classify">
+                <div class="pipe-num" id="pipeNum-classify">1</div>
+                <div class="pipe-info"><div class="pipe-name">Intent Check</div><div class="pipe-desc" id="pipeDesc-classify">Standby</div></div>
+            </div>
+            <div class="pipe-step" id="pipeStep-search">
+                <div class="pipe-num" id="pipeNum-search">2</div>
+                <div class="pipe-info"><div class="pipe-name">Search Web</div><div class="pipe-desc" id="pipeDesc-search">Standby</div></div>
+            </div>
+            <div class="pipe-step" id="pipeStep-summarize">
+                <div class="pipe-num" id="pipeNum-summarize">3</div>
+                <div class="pipe-info"><div class="pipe-name">Summarize</div><div class="pipe-desc" id="pipeDesc-summarize">Standby</div></div>
+            </div>
+            <div class="pipe-step" id="pipeStep-format">
+                <div class="pipe-num" id="pipeNum-format">4</div>
+                <div class="pipe-info"><div class="pipe-name">Format Content</div><div class="pipe-desc" id="pipeDesc-format">Standby</div></div>
+            </div>
+            <div class="pipe-step" id="pipeStep-post">
+                <div class="pipe-num" id="pipeNum-post">5</div>
+                <div class="pipe-info"><div class="pipe-name">Publish</div><div class="pipe-desc" id="pipeDesc-post">Standby</div></div>
+            </div>
+        </div>
+
+        <div class="sidebar-divider" style="margin: 0 16px 16px;"></div>
+        <div class="trace-header" style="padding: 0 16px;">
+            <span class="trace-title">Recent Posts</span>
+        </div>
+        <div class="recent-posts-list" id="recentPostsList">
+            <div class="trace-empty">No successful posts yet.</div>
+        </div>
+
+        <div class="sidebar-divider" style="margin: 0 16px 16px;"></div>
+        <div class="trace-header" style="padding: 0 16px;">
+            <span class="trace-title">Execution Trace</span>
+            <button onclick="clearTrace()" style="background:none;border:none;color:var(--blue);cursor:pointer;font-size:11px;">clear</button>
+        </div>
+        <div class="trace-log" id="traceLog">
+            <div class="trace-empty">Awaiting instructions.</div>
+        </div>
+    </div>
+  </aside>
+</div>
+
+<script>
+/* ── STATE ──────────────────────────────────────────── */
+let authToken = localStorage.getItem('signal_token') || null;
+let currentUsername = localStorage.getItem('signal_user') || null;
+let ws = null;
+let currentSessionId = null;
+let voiceMode = false;
+let isStreaming = false;
+let currentAiMsgEl = null;
+let currentAiContent = '';
+
+/* ── VOICE STATE ────────────────────────────────────── */
+let audioCtx = null;
+let micStream = null;
+let audioProcessor = null;
+let voiceActive = false;
+let audioQueue = [];
+let isPlaying = false;
+
+/* ── GENERATE UNIQUE SESSION ID ─────────────────────── */
+function generateUUID() {
+  return 'sess_' + Math.random().toString(36).substr(2, 9) + '_' + Date.now();
+}
+
+/* ── INIT ────────────────────────────────────────────── */
+(async () => {
+  if (authToken && currentUsername) {
+    await showApp();
+  }
+})();
+
+function switchAuthTab(tab) {
+  document.getElementById('authLoginForm').classList.toggle('hidden', tab!=='login');
+  document.getElementById('authRegisterForm').classList.toggle('hidden', tab!=='register');
+  document.getElementById('tabLogin').style.background = tab === 'login' ? 'var(--bg-panel)' : 'transparent';
+  document.getElementById('tabLogin').style.color = tab === 'login' ? '#fff' : 'var(--text-3)';
+  document.getElementById('tabRegister').style.background = tab === 'register' ? 'var(--bg-panel)' : 'transparent';
+  document.getElementById('tabRegister').style.color = tab === 'register' ? '#fff' : 'var(--text-3)';
+}
+
+async function doLogin() {
+  const u = document.getElementById('loginUser').value.trim();
+  const p = document.getElementById('loginPass').value;
+  try {
+    const fd = new FormData();
+    fd.append('username', u); fd.append('password', p);
+    const r = await fetch('/auth/token', { method: 'POST', body: fd });
+    if (!r.ok) throw new Error('Login failed');
+    const d = await r.json();
+    authToken = d.access_token; currentUsername = u;
+    localStorage.setItem('signal_token', authToken); localStorage.setItem('signal_user', currentUsername);
+    await showApp();
+  } catch(e) { document.getElementById('authErr').textContent = e.message; document.getElementById('authErr').classList.remove('hidden'); }
+}
+
+async function doRegister() {
+  const u = document.getElementById('regUser').value.trim();
+  const e = document.getElementById('regEmail').value.trim();
+  const p = document.getElementById('regPass').value;
+  try {
+    const params = new URLSearchParams({ username: u, password: p, email: e });
+    const r = await fetch('/auth/register?' + params.toString(), { method: 'POST' });
+    if (!r.ok) throw new Error('Registration failed');
+    switchAuthTab('login');
+    document.getElementById('loginUser').value = u;
+  } catch(e) { document.getElementById('authErr').textContent = e.message; document.getElementById('authErr').classList.remove('hidden'); }
+}
+
+async function doSignOut() {
+  try { await apiFetch('/auth/logout', 'POST'); } catch(e) {}
+  localStorage.clear();
+  location.reload();
+}
+
+async function showApp() {
+  document.getElementById('authOverlay').style.display = 'none';
+  document.getElementById('appShell').classList.remove('hidden');
+  document.getElementById('topbarUsername').textContent = currentUsername;
+  document.getElementById('topbarAvatar').textContent = (currentUsername||'U')[0].toUpperCase();
+  currentSessionId = generateUUID();
+  connectWS();
+  await loadSessions();
+  await loadStats();
+  await loadRecentPosts();
+}
+
+async function apiFetch(url, method='GET', body=null) {
+  const opts = { method, headers: { 'Authorization': 'Bearer ' + authToken } };
+  if (body) { opts.headers['Content-Type'] = 'application/json'; opts.body = JSON.stringify(body); }
+  const r = await fetch(url, opts);
+  if (r.status === 401) doSignOut();
+  return r;
+}
+
+/* ── WEBSOCKET ───────────────────────────────────────── */
+function connectWS() {
+  const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+  ws = new WebSocket(`${proto}://${location.host}/chat/ws`);
+  ws.onopen = () => { ws.send(JSON.stringify({ token: authToken })); document.getElementById('wsStatus').style.color = 'var(--green)';};
+  ws.onmessage = async (e) => {
+    // Corrected Binary Output Handling for Voice TTS
+    if (e.data instanceof Blob) {
+        playTTSAudio(await e.data.arrayBuffer());
+    } else if (e.data instanceof ArrayBuffer) {
+        playTTSAudio(e.data);
+    } else if (typeof e.data === 'string') {
+        handleWsMessage(JSON.parse(e.data));
+    }
+  };
+}
+
+function handleWsMessage(data) {
+  const type = data.type;
+  
+  if (type === 'progress') {
+    updatePipelineStep(data.step, data.message);
+    addTraceEntry('info', data.message);
+    showProgress(data.message);
+    
+  } else if (type === 'stt_output') {
+    appendUserMessage(`[Voice] ${data.transcript}`);
+    addTraceEntry('info', `STT: ${data.transcript}`);
+    
+  } else if (type === 'token') {
+    if (!isStreaming) {
+      removeTyping();
+      currentAiMsgEl = appendAiMessage('', true);
+      isStreaming = true; currentAiContent = '';
+    }
+    currentAiContent += data.content;
+    updateStreamMessage(currentAiMsgEl, currentAiContent);
+    
+  } else if (type === 'end') {
+    isStreaming = false;
+    if (currentAiMsgEl) finalizeMessage(currentAiMsgEl, currentAiContent);
+    currentAiMsgEl = null; setSendEnabled(true); removeProgress();
+    addTraceEntry('success', 'Response complete');
+    
+    // Refresh Stats and Posts from DB after agent finishes
+    loadSessions();
+    loadStats();
+    loadRecentPosts();
+    
+  } else if (type === 'session_loaded') {
+    document.getElementById('welcomeScreen')?.remove();
+    const vp = document.getElementById('chatViewport');
+    vp.querySelectorAll('.msg').forEach(el => el.remove());
+    
+    (data.context || []).forEach(m => {
+      if (m.role === 'user') appendUserMessage(m.message);
+      else appendAiMessage(m.message);
+    });
+    scrollToBottom();
+  }
+}
+
+/* ── VOICE I/O ───────────────────────────────────────── */
+function sendPCMChunk(float32Array) {
+    if (!voiceActive || !ws || ws.readyState !== WebSocket.OPEN) return;
+    const int16Array = new Int16Array(float32Array.length);
+    for (let i = 0; i < float32Array.length; i++) {
+        let s = Math.max(-1, Math.min(1, float32Array[i]));
+        int16Array[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
+    }
+    ws.send(int16Array.buffer);
+}
+
+async function startRecording() {
+    if (!voiceMode) {
+        addTraceEntry('err', 'Voice mode disabled. Toggle in sidebar.');
+        return;
+    }
+    try {
+        micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 16000 });
+        const source = audioCtx.createMediaStreamSource(micStream);
+        audioProcessor = audioCtx.createScriptProcessor(4096, 1, 1);
+        
+        source.connect(audioProcessor);
+        audioProcessor.connect(audioCtx.destination);
+        
+        audioProcessor.onaudioprocess = (e) => {
+            sendPCMChunk(e.inputBuffer.getChannelData(0));
+        };
+        
+        ws.send(JSON.stringify({ type: 'voice' }));
+        voiceActive = true;
+        
+        document.getElementById('micBtn').classList.add('recording');
+        document.getElementById('recordingHint').style.display = 'inline';
+        addTraceEntry('info', '🎙️ Recording...');
+    } catch (err) {
+        addTraceEntry('err', 'Mic error: ' + err.message);
+    }
+}
+
+function stopRecording() {
+    if (!voiceActive) return;
+    if (audioProcessor) audioProcessor.disconnect();
+    if (micStream) micStream.getTracks().forEach(t => t.stop());
+    if (audioCtx) audioCtx.close();
+    
+    if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ type: 'utterance_end' }));
+    }
+    
+    voiceActive = false;
+    document.getElementById('micBtn').classList.remove('recording');
+    document.getElementById('recordingHint').style.display = 'none';
+    addTraceEntry('info', '🔇 Processing voice...');
+}
+
+function toggleRecording() {
+    voiceActive ? stopRecording() : startRecording();
+}
+
+function playTTSAudio(buffer) {
+    const blob = new Blob([buffer], { type: 'audio/mpeg' });
+    const audio = new Audio(URL.createObjectURL(blob));
+    audio.onended = () => playNextInQueue();
+    audioQueue.push(audio);
+    if (!isPlaying) playNextInQueue();
+}
+
+function playNextInQueue() {
+    if (audioQueue.length === 0) { isPlaying = false; return; }
+    isPlaying = true;
+    audioQueue.shift().play().catch(e => console.warn('Playback failed', e));
+}
+
+/* ── SEND ────────────────────────────────────────────── */
+function sendMessage() {
+  const inp = document.getElementById('chatInput');
+  const msg = inp.value.trim();
+  if (!msg) return;
+  inp.value = ''; autoResize(inp);
+  document.getElementById('welcomeScreen')?.remove();
+  appendUserMessage(msg); appendTyping(); setSendEnabled(false); resetPipeline();
+  
+  if (!currentSessionId) currentSessionId = generateUUID();
+
+  ws.send(JSON.stringify({
+    type: 'chat',
+    message: msg,
+    session_id: currentSessionId,
+    voice_mode: voiceMode
+  }));
+}
+
+function sendSuggestion(text) { document.getElementById('chatInput').value = text; sendMessage(); }
+function handleInputKey(e) { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); } }
+function autoResize(el) { el.style.height = 'auto'; el.style.height = Math.min(el.scrollHeight, 200) + 'px'; }
+function setSendEnabled(en) { document.getElementById('sendBtn').disabled = !en; }
+
+/* ── MESSAGES UI ─────────────────────────────────────── */
+function appendUserMessage(text) {
+  const vp = document.getElementById('chatViewport');
+  const now = new Date().toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});
+  vp.insertAdjacentHTML('beforeend', `
+    <div class="msg user">
+      <div class="msg-body">
+        <div class="msg-bubble">${escHtml(text)}</div>
+        <div class="msg-meta">${now}</div>
+      </div>
+      <div class="msg-avatar">${(currentUsername||'U')[0].toUpperCase()}</div>
+    </div>`);
+  scrollToBottom();
+}
+
+function appendTyping() {
+  const vp = document.getElementById('chatViewport');
+  vp.insertAdjacentHTML('beforeend', `
+    <div class="msg ai" id="typingMsg">
+      <div class="msg-avatar"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg></div>
+      <div class="msg-body"><div class="typing-bubble"><div class="typing-dot"></div><div class="typing-dot"></div><div class="typing-dot"></div></div></div>
+    </div>`);
+  scrollToBottom();
+}
+function removeTyping() { document.getElementById('typingMsg')?.remove(); }
+
+function showProgress(msg) {
+  removeProgress();
+  document.getElementById('chatViewport').insertAdjacentHTML('beforeend', `
+    <div class="msg ai" id="progressMsg">
+      <div class="msg-avatar"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg></div>
+      <div class="msg-body"><div class="progress-strip"><div class="progress-spinner"></div>${escHtml(msg)}</div></div>
+    </div>`);
+  scrollToBottom();
+}
+function removeProgress() { document.getElementById('progressMsg')?.remove(); }
+
+function appendAiMessage(text, streaming=false) {
+  const vp = document.getElementById('chatViewport');
+  const div = document.createElement('div');
+  div.className = 'msg ai';
+  div.innerHTML = `
+    <div class="msg-avatar"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/></svg></div>
+    <div class="msg-body">
+      <div class="msg-bubble">${streaming ? '' : renderMarkdown(text)}</div>
+      <div class="msg-meta">${new Date().toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})}</div>
+    </div>`;
+  vp.appendChild(div); scrollToBottom(); return div;
+}
+
+function updateStreamMessage(el, content) {
+  const bubble = el.querySelector('.msg-bubble');
+  if (bubble) bubble.innerHTML = renderMarkdown(content);
+  scrollToBottom();
+}
+
+function finalizeMessage(el, content) {
+  updateStreamMessage(el, content);
+  if (content.includes('awaiting_confirmation') || content.toLowerCase().includes('shall i publish')) {
+    const meta = el.querySelector('.msg-meta');
+    meta.insertAdjacentHTML('beforebegin', `
+      <div class="confirm-row">
+        <button class="confirm-yes" onclick="sendConfirm(true, this)">✓ Post it</button>
+        <button class="confirm-no" onclick="sendConfirm(false, this)">✗ Cancel</button>
+      </div>`);
+  }
+}
+
+function sendConfirm(yes, btn) {
+  btn.closest('.confirm-row').remove();
+  const text = yes ? 'Yes, post it' : 'Cancel';
+  appendUserMessage(text); appendTyping(); setSendEnabled(false); resetPipeline();
+  ws.send(JSON.stringify({ type: 'chat', message: text, session_id: currentSessionId }));
+}
+
+function scrollToBottom() { const vp = document.getElementById('chatViewport'); vp.scrollTop = vp.scrollHeight; }
+function renderMarkdown(text) { try { return marked.parse(text || ''); } catch(e) { return escHtml(text); } }
+function escHtml(s) { return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+/* ── SESSIONS (Left Sidebar) ─────────────────────────── */
+async function loadSessions() {
+  try {
+    const r = await apiFetch('/chat/sessions');
+    if (!r.ok) return;
+    const d = await r.json();
+    const list = document.getElementById('sessionList');
+    if (!d.sessions || !d.sessions.length) {
+      list.innerHTML = '<div style="padding:12px;font-size:13px;color:var(--text-3); text-align:center;">No history yet</div>';
+      return;
+    }
+    list.innerHTML = d.sessions.map(s => `
+      <div class="session-item ${s.session_id===currentSessionId?'active':''}" data-id="${s.session_id}">
+        <div class="session-item-text" onclick="loadSession('${s.session_id}')">${escHtml(s.preview || 'New Chat')}</div>
+        <button class="session-del" onclick="deleteSession('${s.session_id}', event)" title="Delete">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2 2v2"/></svg>
+        </button>
+      </div>`).join('');
+  } catch(e) {}
+}
+
+async function loadSession(id) {
+  currentSessionId = id;
+  document.querySelectorAll('.session-item').forEach(el => el.classList.toggle('active', el.dataset.id===id));
+  if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ type: 'load_session', session_id: id }));
+  }
+}
+
+async function deleteSession(id, evt) {
+  evt.stopPropagation();
+  if(!confirm("Are you sure you want to delete this chat?")) return;
+  try {
+      await apiFetch(`/chat/session/${id}`, 'DELETE');
+      document.querySelector(`[data-id="${id}"]`)?.remove();
+      if (currentSessionId === id) { startNewChat(); }
+      if (ws && ws.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify({ type: 'new_chat', session_id: id }));
+      }
+  } catch(e) { console.error("Deletion failed", e); }
+}
+
+function startNewChat() {
+  currentSessionId = generateUUID();
+  document.querySelectorAll('.session-item').forEach(el => el.classList.remove('active'));
+  const vp = document.getElementById('chatViewport');
+  vp.querySelectorAll('.msg').forEach(el => el.remove());
+  if (!document.getElementById('welcomeScreen')) { location.reload(); }
+  resetPipeline();
+}
+
+/* ── RECENT POSTS (Right Sidebar) ────────────────────── */
+async function loadRecentPosts() {
+    try {
+        const r = await apiFetch('/chat/activity?limit=15');
+        if (!r.ok) return;
+        const d = await r.json();
+        const posts = d.activities.filter(a => a.type === 'post' && a.status === 'success');
+        
+        const list = document.getElementById('recentPostsList');
+        if (!posts.length) {
+            list.innerHTML = '<div class="trace-empty">No successful posts yet.</div>';
+            return;
+        }
+        
+        list.innerHTML = posts.map(p => `
+            <div class="recent-post-card">
+                <div class="rp-header">
+                    <span class="rp-plat">${p.platform}</span>
+                    <span class="rp-time">${new Date(p.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
+                </div>
+                <div class="rp-text">${escHtml(p.content_preview)}...</div>
+            </div>
+        `).join('');
+    } catch(e) {}
+}
+
+/* ── PIPELINE & TRACE ────────────────────────────────── */
+const stepKeyMap = { classify: 'classify', search: 'search', summarize: 'summarize', format: 'format', post: 'post' };
+function resetPipeline() {
+  ['classify','search','summarize','format','post'].forEach(k => {
+    document.getElementById('pipeNum-'+k).className = 'pipe-num';
+    document.getElementById('pipeDesc-'+k).textContent = 'Standby';
+  });
+}
+function updatePipelineStep(step, msg) {
+  const key = stepKeyMap[step] || Object.keys(stepKeyMap).find(k => step.includes(k));
+  if (!key) return;
+  const keys = ['classify','search','summarize','format','post'];
+  keys.slice(0, keys.indexOf(key)).forEach(k => document.getElementById('pipeNum-'+k).className = 'pipe-num done');
+  document.getElementById('pipeNum-'+key).className = 'pipe-num active';
+  document.getElementById('pipeDesc-'+key).textContent = msg.replace(/^[^\w]*/, '').slice(0,30);
+}
+function addTraceEntry(level, text) {
+  const log = document.getElementById('traceLog');
+  log.querySelector('.trace-empty')?.remove();
+  const time = new Date().toLocaleTimeString([],{hour:'2-digit',minute:'2-digit',second:'2-digit'});
+  log.insertAdjacentHTML('beforeend', `<div class="trace-entry ${level}">[${time}] ${escHtml(text)}</div>`);
+  if (log.children.length > 30) log.firstElementChild.remove();
+}
+function clearTrace() { document.getElementById('traceLog').innerHTML = '<div class="trace-empty">Trace cleared.</div>'; resetPipeline(); }
+
+/* ── SETTINGS & STATS ────────────────────────────────── */
+async function loadStats() {
+  try {
+    const r = await apiFetch('/admin/stats');
+    if(r.ok) {
+        const d = await r.json();
+        document.getElementById('statQueries').textContent = d.queries ?? '0';
+        document.getElementById('statPosts').textContent = d.posts ?? '0';
+    }
+  } catch(e){}
+}
+function openModal(id) { document.getElementById(id).classList.add('open'); }
+function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+function syncVoiceToggleFromSidebar(val) { voiceMode = val; }
+
+/* ── CONNECTIONS (LinkedIn, Facebook, Twitter) ───────────────────────── */
+async function loadSettingsData() {
+  document.getElementById('settingsUsername').textContent = currentUsername || '—';
+  
+  const r = await apiFetch('/auth/connections').catch(()=>null);
+  if (r && r.ok) {
+    const d = await r.json();
+    const update = (platform, data) => {
+      const statusEl = document.getElementById(`settings${platform}Status`);
+      const disconnBtn = document.getElementById(`settings${platform}Disconnect`);
+      if (!statusEl) return;
+      if (data.connected && data.valid) { statusEl.textContent = '✓ Connected'; statusEl.style.color = 'var(--green)'; disconnBtn.style.display = 'block'; }
+      else if (data.connected) { statusEl.textContent = '⚠ Expired'; statusEl.style.color = 'var(--amber)'; disconnBtn.style.display = 'block'; }
+      else { statusEl.textContent = 'Not connected'; statusEl.style.color = 'var(--text-3)'; disconnBtn.style.display = 'none'; }
+    };
+    update('Li', d.linkedin || {});
+    update('Fb', d.facebook || {});
+    update('Tw', d.twitter || {});
+  }
+}
+
+function showModalError(elementId, message) {
+  const el = document.getElementById(elementId);
+  el.textContent = message;
+  el.classList.remove('hidden');
+}
+
+// LinkedIn
+function openLinkedInModal() { openModal('linkedinModal'); document.getElementById('liTokenInput').value = ''; document.getElementById('liConnectErr').classList.add('hidden'); document.getElementById('liConnectSuccess').style.display = 'none'; }
+async function submitLinkedInToken() {
+  const token = document.getElementById('liTokenInput').value.trim();
+  if (!token) { showModalError('liConnectErr', 'Please paste your access token.'); return; }
+  try {
+    const r = await apiFetch(`/auth/linkedin/manual-token?access_token=${encodeURIComponent(token)}`, 'POST');
+    if (!r.ok) { const d = await r.json(); showModalError('liConnectErr', d.detail || 'Token validation failed.'); return; }
+    document.getElementById('liConnectErr').classList.add('hidden');
+    document.getElementById('liConnectSuccess').style.display = 'block';
+    await loadSettingsData();
+    setTimeout(() => closeModal('linkedinModal'), 1500);
+  } catch(e) { showModalError('liConnectErr', 'Error: ' + e.message); }
+}
+async function disconnectLinkedIn() { await apiFetch('/auth/linkedin/disconnect', 'DELETE'); await loadSettingsData(); }
+
+// Facebook
+function openFacebookModal() { openModal('facebookModal'); document.getElementById('fbTokenInput').value = ''; document.getElementById('fbPageIdInput').value = ''; document.getElementById('fbConnectErr').classList.add('hidden'); }
+async function submitFacebookToken() {
+  const token = document.getElementById('fbTokenInput').value.trim();
+  const pageId = document.getElementById('fbPageIdInput').value.trim();
+  if (!token || !pageId) { showModalError('fbConnectErr', 'Token and Page ID required'); return; }
+  try {
+    const r = await apiFetch(`/auth/facebook/manual-token?access_token=${encodeURIComponent(token)}&page_id=${encodeURIComponent(pageId)}`, 'POST');
+    if (!r.ok) { const d = await r.json(); showModalError('fbConnectErr', d.detail || 'Connection failed'); return; }
+    await loadSettingsData();
+    closeModal('facebookModal');
+  } catch(e) { showModalError('fbConnectErr', e.message); }
+}
+async function disconnectFacebook() { await apiFetch('/auth/facebook/disconnect', 'DELETE'); await loadSettingsData(); }
+
+// Twitter
+function openTwitterModal() { openModal('twitterModal'); document.getElementById('twTokenInput').value = ''; document.getElementById('twConnectErr').classList.add('hidden'); document.getElementById('twConnectSuccess').style.display = 'none'; }
+async function submitTwitterToken() {
+  const token = document.getElementById('twTokenInput').value.trim();
+  if (!token) { showModalError('twConnectErr', 'Access token required'); return; }
+  try {
+    const r = await apiFetch(`/auth/twitter/manual-token?access_token=${encodeURIComponent(token)}`, 'POST');
+    if (!r.ok) { const d = await r.json(); showModalError('twConnectErr', d.detail || 'Connection failed'); return; }
+    document.getElementById('twConnectErr').classList.add('hidden');
+    document.getElementById('twConnectSuccess').style.display = 'block';
+    await loadSettingsData();
+    setTimeout(() => closeModal('twitterModal'), 1500);
+  } catch(e) { showModalError('twConnectErr', e.message); }
+}
+async function startTwitterOAuth() {
+  try {
+    const r = await apiFetch('/auth/twitter/connect');
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.detail || 'Failed to start OAuth');
+    window.open(d.auth_url, 'twitterAuth', 'width=600,height=600');
+    setTimeout(loadSettingsData, 5000); 
+  } catch (e) { showModalError('twConnectErr', e.message); }
+}
+async function disconnectTwitter() { await apiFetch('/auth/twitter/disconnect', 'DELETE'); await loadSettingsData(); }
+</script>
+</body>
+</html>

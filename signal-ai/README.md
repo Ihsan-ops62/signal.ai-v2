@@ -1,326 +1,118 @@
-# Signal AI - Production-Grade AI News Reporter System
+# Signal.AI – The Multi-Agent Tech Reporter
 
-A scalable, multi-agent architecture for intelligent news discovery, summarization, and social media publishing. Built with FastAPI, LangGraph, and production-ready infrastructure.
+Signal.AI is an advanced, autonomous agent platform designed to act as your personal technology reporter. Leveraging a sophisticated multi-agent architecture orchestrated by **LangGraph**, Signal.AI listens to your voice or text commands, searches the web for the latest tech breakthroughs, summarizes key findings using **local LLMs**, and drafts ready-to-publish updates for your social media platforms.
 
-## Features
+By integrating human-in-the-loop confirmation, Signal.AI combines the speed of automation with human editorial control.
 
-- **Multi-Agent Architecture**: Specialized agents for intent detection, news search, summarization, formatting, and social posting
-- **Dual LLM Support**: Ollama (local) with OpenAI fallback for reliability
-- **Smart News Aggregation**: Real-time news discovery with quality filtering and deduplication
-- **Social Media Integration**: LinkedIn, Twitter (X), and Facebook posting with OAuth
-- **Conversational Interface**: Chat API for natural language interactions
-- **Async Processing**: Celery workers for background tasks
-- **Event-Driven**: Kafka for real-time event streaming
-- **Comprehensive Monitoring**: Prometheus metrics, structured logging, health checks
-- **Rate Limiting & Caching**: Redis-based caching with automatic fallback to in-memory
-- **Fully Containerized**: Docker and Docker Compose for production deployment
+![Signal.AI Workspace](./signal01.png)
 
-## Architecture
+## Core Capabilities
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│                    FastAPI Application                       │
-│  ┌────────────────────────────────────────────────────────┐  │
-│  │  Routes: /chat, /social, /admin, /webhooks, /auth    │  │
-│  └────────────────────────────────────────────────────────┘  │
-└──────────────────────┬──────────────────────────────────────┘
-                       │
-        ┌──────────────┼──────────────┐
-        │              │              │
-    ┌─────────┐   ┌─────────┐   ┌─────────┐
-    │ Agents  │   │Services │   │  Infra  │
-    ├─────────┤   ├─────────┤   ├─────────┤
-    │ Intent  │   │LLM      │   │PostgreSQL
-    │ Search  │   │Social   │   │MongoDB
-    │ Filter  │   │Search   │   │Redis
-    │ Summary │   │Cache    │   │Kafka
-    │ Format  │   │OAuth    │   │
-    │ Social  │   │Queue    │   │
-    └─────────┘   └─────────┘   └─────────┘
-```
-
-## Quick Start
-
-### Prerequisites
-
-- Python 3.11+
-- Docker & Docker Compose
-- NewsAPI key (free tier available)
-- LinkedIn/Twitter/Facebook OAuth credentials (optional)
-
-### Development Setup
-
-1. **Clone and setup**
-```bash
-git clone https://github.com/yourusername/signal-ai.git
-cd signal-ai
-python -m venv venv
-source venv/bin/activate  # Windows: venv\Scripts\activate
-pip install -r requirements.txt
-```
-
-2. **Configure environment**
-```bash
-cp .env.example .env
-# Edit .env with your API keys
-```
-
-3. **Start services (Docker recommended)**
-```bash
-docker-compose up -d
-```
-
-4. **Run application**
-```bash
-# Terminal 1: API
-uvicorn api.main:app --reload
-
-# Terminal 2: Celery Worker
-celery -A services.queue.celery_app worker --loglevel=info
-
-# Terminal 3: Celery Beat (scheduler)
-celery -A services.queue.celery_app beat --loglevel=info
-```
-
-5. **Access API**
-```
-API: http://localhost:8000
-Docs: http://localhost:8000/docs
-Metrics: http://localhost:8000/metrics
-```
-
-## Production Deployment
-
-### Using Docker Compose
-
-```bash
-# Build and start all services
-docker-compose up -d
-
-# View logs
-docker-compose logs -f api
-
-# Stop services
-docker-compose down
-```
-
-### Using Kubernetes
-
-```bash
-# Deploy (requires k8s resources in deployments/k8s/)
-kubectl apply -f deployments/k8s/
-```
-
-### Cloud Deployment (AWS/GCP/Azure)
-
-See `deployments/terraform/` for infrastructure-as-code templates.
-
-## API Endpoints
-
-### Authentication
-- `POST /api/auth/register` - Register new user
-- `POST /api/auth/login` - Login user
-- `POST /api/auth/refresh` - Refresh token
-- `GET /api/auth/me` - Get current user
-
-### Chat & News
-- `POST /api/chat/search-news` - Search news articles
-- `GET /api/chat/trending-news` - Get trending news
-- `POST /api/chat/chat` - Chat with AI
-
-### Social Media
-- `POST /api/social/post` - Post to social platforms
-- `GET /api/social/auth/linkedin` - LinkedIn OAuth
-- `GET /api/social/auth/facebook` - Facebook OAuth
-- `POST /api/social/auth/callback` - OAuth callback
-
-### Admin
-- `GET /api/admin/health` - System health
-- `GET /api/admin/stats` - System statistics
-- `POST /api/admin/cache/clear` - Clear cache
-- `GET /api/admin/config` - Get configuration
-
-## Configuration
-
-All configuration via environment variables. See `.env.example` for complete list:
-
-```bash
-# Core
-ENVIRONMENT=production
-DEBUG=false
-
-# LLM
-LLM_PRIMARY_PROVIDER=ollama
-LLM_OLLAMA_BASE_URL=http://ollama:11434
-
-# Social Media APIs
-SOCIAL_LINKEDIN_CLIENT_ID=...
-SOCIAL_TWITTER_API_KEY=...
-SOCIAL_FACEBOOK_APP_ID=...
-
-# NewsAPI
-NEWS_NEWSAPI_KEY=...
-```
-
-## Project Structure
-
-```
-signal-ai/
-├── api/                      # FastAPI routes & schemas
-│   ├── routes/              # Endpoint handlers
-│   ├── schemas/             # Request/response models
-│   ├── dependencies/        # Auth, DB, rate limiting
-│   └── main.py             # Application factory
-├── agents/                   # Multi-agent modules
-│   ├── intent/             # Intent detection
-│   ├── search/             # News search
-│   ├── summarizer/         # Content summarization
-│   ├── formatter/          # Platform formatting
-│   └── social/             # Social posting
-├── services/                 # Business logic
-│   ├── llm/               # LLM abstraction (Ollama, OpenAI)
-│   ├── social/            # Social media platforms
-│   ├── cache/             # Redis & in-memory
-│   ├── search/            # News search service
-│   ├── oauth/             # OAuth flows
-│   └── queue/             # Celery tasks
-├── infrastructure/           # Infrastructure
-│   ├── database/          # PostgreSQL & MongoDB
-│   ├── messaging/         # Kafka events
-│   └── monitoring/        # Logging & metrics
-├── core/                     # Core utilities
-│   ├── config.py          # Configuration
-│   ├── security.py        # JWT, encryption
-│   └── exceptions.py      # Custom exceptions
-├── tests/                    # Test suites
-├── scripts/                  # Utilities
-├── deployments/              # Docker, K8s, Terraform
-├── requirements.txt          # Python dependencies
-├── docker-compose.yml        # Full stack
-├── Dockerfile               # Container image
-└── README.md                # This file
-```
-
-## Key Production Improvements
-
-### Reliability
-- ✅ Automatic LLM failover (Ollama → OpenAI)
-- ✅ Exponential backoff retry logic
-- ✅ Circuit breaker for external APIs
-- ✅ Health checks on all services
-- ✅ MongoDB + PostgreSQL hybrid storage
-
-### Scalability
-- ✅ Async FastAPI with connection pooling
-- ✅ Celery worker scaling
-- ✅ Kafka event streaming
-- ✅ Redis distributed caching
-- ✅ Horizontal API scaling (load balanced)
-
-### Security
-- ✅ JWT token management
-- ✅ OAuth 2.0 social media
-- ✅ Encrypted token storage
-- ✅ Rate limiting per user/IP
-- ✅ CORS configuration
-- ✅ API key authentication
-
-### Observability
-- ✅ Prometheus metrics (/metrics endpoint)
-- ✅ Structured JSON logging
-- ✅ Request tracing
-- ✅ Error tracking
-- ✅ Performance monitoring
-
-### Code Quality
-- ✅ Type hints (MyPy)
-- ✅ Comprehensive error handling
-- ✅ Modular architecture
-- ✅ Unit & integration tests
-- ✅ Black formatting
-- ✅ Docstrings
-
-## Testing
-
-```bash
-# Run all tests
-pytest
-
-# With coverage
-pytest --cov=api --cov=services --cov=agents
-
-# Unit tests only
-pytest tests/unit/
-
-# Integration tests
-pytest tests/integration/
-
-# E2E tests
-pytest tests/e2e/
-```
-
-## Monitoring
-
-### Health Checks
-```bash
-curl http://localhost:8000/health
-```
-
-### Metrics
-```bash
-curl http://localhost:8000/metrics
-```
-
-### Logs
-```bash
-# Docker
-docker-compose logs -f api
-
-# Structured JSON logs include:
-# - timestamp, level, logger, message
-# - module, function, line
-# - user_id, request_id (when available)
-```
-
-## Troubleshooting
-
-### LLM Service Down
-- Falls back to OpenAI automatically
-- Check: `docker-compose logs ollama`
-- Restart: `docker-compose restart ollama`
-
-### Database Connection Error
-- Verify PostgreSQL running: `docker-compose ps postgres`
-- Check credentials in `.env`
-- Migrations run automatically on startup
-
-### Social Media API Errors
-- Rate limits: Check platform API limits
-- OAuth tokens: Re-authenticate via `/api/social/auth/*`
-- Signature failures: Verify webhook secrets
-
-### Performance Issues
-- Check Redis: `redis-cli info stats`
-- Monitor CPU/Memory: `docker stats`
-- Scale workers: Update `docker-compose.yml`
-
-## Contributing
-
-1. Fork repository
-2. Create feature branch
-3. Make changes with tests
-4. Submit pull request
-
-## License
-
-MIT License - see LICENSE file for details
-
-## Support
-
-- Documentation: https://docs.signal-ai.dev
-- Issues: GitHub Issues
-- Discussions: GitHub Discussions
+* **🎙️ Real-time Voice I/O:** Command the agent via microphone (Streaming STT) and receive spoken summaries and updates (TTS).
+* **🤖 Multi-Agent Pipeline:** Intention classification, web searching, summarization, and formatting are handled by specialized agents working in concert.
+* **💻 Local LLMs via Ollama:** Maintain data privacy and eliminate API costs by running models like `llama3` or `mistral` locally.
+* **🔗 Social Media Integration:** Connect and post directly to **LinkedIn**, **Facebook**, and **Twitter (X)** after human review.
+* **📊 Live Pipeline Visualization:** Watch the agent move through steps (Classify, Search, Summarize, Format) in real-time.
+* **🗄️ Contextual Memory:** Robust session management using **Redis** for quick caching and **MongoDB** for long-term history persistence.
 
 ---
 
-**Built with** ❤️ for production-grade AI applications
+## Visual Walkthrough
+
+Here is how you interact with and manage Signal.AI.
+
+### 1. The Workspace
+
+The main dashboard is split into three areas:
+* **Left Sidebar:** Manage chat history and toggle **Voice Mode**.
+* **Main Chat:** The live interaction viewport and input area.
+* **Right Sidebar:** View real-time agent pipeline progress, interaction stats, and recent successful posts.
+
+![Active Chat View](./signal01.png)
+
+### 2. Connected Accounts (Settings)
+
+Access the Settings modal via your avatar. Here, you can manually connect or disconnect your social media accounts. Signal.AI uses manual token management for LinkedIn and Facebook, and standard OAuth for Twitter (X).
+
+![Connection Settings](./signal%2002.png)
+
+### 3. Pipeline in Action (Searching & Summarizing)
+
+When you ask for news (e.g., *"latest news about AI"*), the intention is classified. You can see the **Agent Pipeline** on the right move from Standby to Step 2 (**Search Web**) and Step 3 (**Summarize**). The AI streams tokens (words) to the chat as they are generated.
+
+![Live Pipeline Tracking](./signal03.png)
+
+### 4. Human-in-the-Loop Confirmation
+
+Signal.AI will never post destructive actions without your permission. After summarizing and formatting a post based on your connected platforms, the agent pauses the workflow and asks for confirmation.
+
+![Post Confirmation Request](./signal%2004.png)
+
+You can click **Post** to publish, **Cancel** to abort, or simply tell the agent to *"reformat the post"* to try again.
+
+---
+
+## Technology Stack
+
+* **Backend:** FastAPI (Async Python)
+* **Multi-Agent Orchestration:** LangGraph (LangChain ecosystem)
+* **LLM Engine:** Ollama (running local llama3/mistral)
+* **Databases:** MongoDB (persistence), Redis (session caching)
+* **Voice STT:** Faster Whisper (local)
+* **Voice TTS:** MelTTS (local)
+
+## Getting Started
+
+### Prerequisites
+
+You must have the following installed and running locally:
+
+1.  **Python 3.10+**
+2.  **Ollama:** Installed and `llama3` (or preferred model) pulled: `ollama pull llama3`
+3.  **MongoDB:** Installed and running on standard port `27017`.
+4.  **Redis:** Installed and running on standard port `6379`.
+
+### Installation
+
+1.  Clone the repository:
+    ```bash
+    git clone copy the url and clone
+    cd signal-ai
+    ```
+
+2.  Create and activate a virtual environment:
+    ```bash
+    python -m venv venv
+    # Windows
+    venv\Scripts\activate
+    # Mac/Linux
+    source venv/bin/activate
+    ```
+
+3.  Install the dependencies:
+    ```bash
+    pip install -r requirements.txt
+    ```
+
+4.  Configure environment variables:
+    Create a `.env` file in the root directory and add necessary keys (if any for search APIs) and configure your model names.
+
+    ```env
+    OLLAMA_MODEL=llama3
+    MONGODB_URL=mongodb://localhost:27017
+    REDIS_URL=redis://localhost:6379
+    # Add optional social media client IDs if needed
+    ```
+
+### Running the Application
+
+1.  Start the FastAPI backend server:
+    ```bash
+    # From the project root
+    uvicorn api.main:app --host 0.0.0.0 --port 8000 --reload
+    ```
+
+2.  Open your browser and navigate to:
+    `http://localhost:8000`
+
+Register a new account (or sign in if already registered), connect your social media tokens in Settings, and start commanding your Tech Reporter!

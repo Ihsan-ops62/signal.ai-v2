@@ -1,40 +1,44 @@
-
-from prometheus_client import Counter, Histogram, Gauge
+import os
+from prometheus_client import Counter, Histogram, Gauge, generate_latest, REGISTRY
+from fastapi import Request, Response
+from starlette.middleware.base import BaseHTTPMiddleware
 
 # Metrics
-request_count = Counter("signal_requests_total", "Total HTTP requests", ["method", "endpoint", "status"])
-request_duration = Histogram("signal_request_duration_seconds", "Request duration", ["method", "endpoint"])
-llm_call_duration = Histogram("signal_llm_call_duration_seconds", "LLM call duration", ["model"])
-post_count = Counter("signal_posts_total", "Total social media posts", ["platform", "status"])
-active_sessions = Gauge("signal_active_sessions", "Number of active WebSocket sessions")
+REQUEST_COUNT = Counter(
+    "http_requests_total",
+    "Total HTTP requests",
+    ["method", "endpoint", "status"]
+)
+REQUEST_LATENCY = Histogram(
+    "http_request_duration_seconds",
+    "HTTP request latency",
+    ["method", "endpoint"]
+)
+ACTIVE_REQUESTS = Gauge(
+    "http_requests_active",
+    "Active HTTP requests"
+)
+LLM_REQUEST_COUNT = Counter(
+    "llm_requests_total",
+    "Total LLM requests",
+    ["model", "status"]
+)
+SOCIAL_POST_COUNT = Counter(
+    "social_posts_total",
+    "Total social media posts",
+    ["platform", "status"]
+)
 
+class MetricsMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        ACTIVE_REQUESTS.inc()
+        method = request.method
+        path = request.url.path
+        with REQUEST_LATENCY.labels(method, path).time():
+            response = await call_next(request)
+        REQUEST_COUNT.labels(method, path, response.status_code).inc()
+        ACTIVE_REQUESTS.dec()
+        return response
 
-class MetricsCollector:
-    @staticmethod
-    def record_error(error_type: str, context: str = ""):
-        pass
-
-    @staticmethod
-    def record_social_post(platform: str, status: str, latency: float = 0):
-        post_count.labels(platform=platform, status=status).inc()
-
-    @staticmethod
-    def record_news_processing(source: str):
-        pass
-
-    @staticmethod
-    def record_api_request(method: str, endpoint: str, status: int, duration: float):
-        request_count.labels(method=method, endpoint=endpoint, status=str(status)).inc()
-        request_duration.labels(method=method, endpoint=endpoint).observe(duration)
-
-
-class MetricsContext:
-    def __init__(self, name: str, **labels):
-        self.name = name
-        self.labels = labels
-
-    def __enter__(self):
-        pass
-
-    def __exit__(self, *args):
-        pass
+async def metrics_endpoint():
+    return Response(content=generate_latest(REGISTRY), media_type="text/plain")

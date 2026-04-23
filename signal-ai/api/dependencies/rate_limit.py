@@ -1,53 +1,38 @@
+import time
+from fastapi import HTTPException
+from infrastructure.database.mongodb import MongoDB
 
-import logging
-from typing import Optional
-from fastapi import Request, HTTPException, Depends
-from core.config import settings
-from api.dependencies.auth import get_optional_user
-from services.cache.redis import get_cache
-
-logger = logging.getLogger(__name__)
-
-
-class RateLimitKey:
-    @staticmethod
-    def for_user(user_id: str) -> str:
-        return f"rate_limit:user:{user_id}"
+async def check_rate_limit(username: str, platform: str, max_requests: int = 1, window_seconds: int = 60) -> bool:
+    """
+    Check and enforce rate limiting for a user on a specific platform.
+    Returns True if allowed, False otherwise.
+    """
+    coll = MongoDB.get_collection("user_rate_limits")
+    now = time.time()
+    doc = await coll.find_one({"username": username, "platform": platform})
     
-    @staticmethod
-    def for_ip(ip: str) -> str:
-        return f"rate_limit:ip:{ip}"
-
-
-async def check_rate_limit(
-    request: Request,
-    current_user = Depends(get_optional_user)
-) -> None:
-    """Check rate limiting."""
-    try:
-        cache = await get_cache()
-        
-        if current_user:
-            key = RateLimitKey.for_user(current_user.sub)
-            limit = 100  # Higher limit for authenticated users
-        else:
-            client_ip = request.client.host if request.client else "unknown"
-            key = RateLimitKey.for_ip(client_ip)
-            limit = 30  # Lower limit for anonymous
-        
-        current = await cache.increment(key, 1)
-        
-        if current == 1:
-            # Set expiry on first request (60 seconds window)
-            await cache.set(key, current, ttl=60)
-        
-        if current > limit:
-            logger.warning(f"Rate limit exceeded for {key}")
-            raise HTTPException(status_code=429, detail="Too many requests")
+    if not doc:
+        await coll.insert_one({
+            "username": username,
+            "platform": platform,
+            "last_post_time": 0,
+            "count": 0,
+            "last_reset": now,
+        })
+        return True
     
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Rate limit check failed: {e}")
-        # Fail open - allow request
-        pass
+    if now - doc.get("last_reset", 0) > window_seconds:
+        await coll.update_one(
+            {"_id": doc["_id"]},
+            {"$set": {"count": 0, "last_reset": now}}
+        )
+        return True
+    
+    if doc.get("count", 0) >= max_requests:
+        return False
+    
+    await coll.update_one(
+        {"_id": doc["_id"]},
+        {"$inc": {"count": 1}, "$set": {"last_post_time": now}}
+    )
+    return True

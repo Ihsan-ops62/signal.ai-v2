@@ -1,141 +1,68 @@
 import logging
-from typing import Optional, List
+import re
 
-from services.search.search_service import get_search_service
-from core.exceptions import SearchError
+from services.search.search_service import SearchService, _extract_keywords
 
 logger = logging.getLogger(__name__)
 
+# Short tech abbreviations expanded to full form for better search
+_EXPANSIONS: dict[str, str] = {
+    r"\bml\b":  "machine learning",
+    r"\bai\b":  "artificial intelligence",
+    r"\bllm\b": "large language model",
+    r"\bnlp\b": "natural language processing",
+    r"\biot\b": "internet of things",
+    r"\bvr\b":  "virtual reality",
+    r"\bar\b":  "augmented reality",
+    r"\bcv\b":  "computer vision",
+    r"\brl\b":  "reinforcement learning",
+}
 
-class NewsSearchAgent:
-    """Agent for discovering and filtering news articles."""
-    
-    def __init__(self):
-        self.name = "NewsSearchAgent"
-        self.min_quality_score = 40.0
-    
+# Broad topics that don't need "technology news" appended
+_TECH_TERMS = {
+    "machine learning", "artificial intelligence", "deep learning",
+    "cybersecurity", "cloud computing", "blockchain", "kubernetes",
+    "docker", "devops", "nvidia", "openai", "google", "microsoft",
+    "llm", "gpt", "neural", "semiconductor",
+}
+
+
+class WebSearchAgent:
+
     @staticmethod
-    async def search(
-        query: str,
-        category: Optional[str] = None,
-        limit: int = 10,
-        min_quality: Optional[float] = None
-    ) -> List[dict]:
-        """
-        Search for news articles.
+    def _build_search_query(user_query: str) -> str:
         
-        Args:
-            query: Search query
-            category: Optional news category (ignored in current implementation)
-            limit: Max articles to return
-            min_quality: Minimum quality score (0-100)
-            
-        Returns:
-            List of article dictionaries (empty list if none found or error)
-        """
-        try:
-            search_service = await get_search_service()
-            articles = await search_service.search(
-                query=query,
-                category=category,
-                limit=limit
-            )
-            # Ensure we always return a list
-            if articles is None:
-                logger.warning("Search service returned None, using empty list")
-                return []
-            
-            # Filter by quality score if specified
-            if min_quality is not None:
-                articles = [a for a in articles if a.get("quality_score", 0) >= min_quality]
-            
-            logger.info(f"Found {len(articles)} articles for query: {query}")
-            return articles
-        
-        except Exception as e:
-            logger.error(f"News search failed: {str(e)}")
-            # Return empty list instead of raising, to avoid breaking workflow
-            return []
-    
+        #  expand abbreviations
+        expanded = user_query.lower()
+        for pattern, replacement in _EXPANSIONS.items():
+            expanded = re.sub(pattern, replacement, expanded, flags=re.IGNORECASE)
+
+        # extract meaningful keywords
+        keywords = _extract_keywords(expanded)
+
+        # build query string (prefer multi-word phrases first)
+        multi_word   = [k for k in keywords if " " in k]
+        single_words = [k for k in keywords if " " not in k]
+        ordered      = multi_word + single_words  # multi-word first
+
+        # Take up to 4 terms (phrases count as 1 term each)
+        query_parts = ordered[:4]
+        search_query = " ".join(query_parts)
+
+        # append news if not already present and no obvious topic coverage
+        already_has_tech = any(term in search_query for term in _TECH_TERMS)
+        has_news_word    = any(w in search_query for w in ["news", "latest", "update"])
+
+        if not has_news_word and not already_has_tech:
+            search_query += " technology news"
+
+        logger.info("Search query: %r → %r", user_query[:60], search_query)
+        return search_query
+
     @staticmethod
-    async def get_trending(self, limit: int = 5) -> List[dict]:
-        """
-        Get trending news articles.
-        
-        Args:
-            limit: Max articles to return
-            
-        Returns:
-            List of trending articles
-        """
-        try:
-            search_service = await get_search_service()
-            articles = await search_service.get_trending(limit=limit)
-            if articles is None:
-                return []
-            logger.info(f"Retrieved {len(articles)} trending articles")
-            return articles
-        except Exception as e:
-            logger.error(f"Trending fetch failed: {str(e)}")
-            return []
-    
-    @staticmethod
-    async def search_by_source(
-        source: str,
-        limit: int = 10
-    ) -> List[dict]:
-        """
-        Search articles from specific source.
-        
-        Args:
-            source: News source name
-            limit: Max articles
-            
-        Returns:
-            List of articles from source
-        """
-        try:
-            search_service = await get_search_service()
-            articles = await search_service.search(
-                query=f"source:{source}",
-                limit=limit
-            )
-            return articles if articles is not None else []
-        except Exception as e:
-            logger.error(f"Source search failed: {str(e)}")
-            return []
-    
-    @staticmethod
-    async def filter_duplicates(articles: List[dict]) -> List[dict]:
-        """
-        Remove duplicate articles from list.
-        
-        Args:
-            articles: List of articles
-            
-        Returns:
-            Deduplicated list
-        """
-        if not articles:
-            return []
-        seen_titles = set()
-        unique = []
-        for article in articles:
-            title = article.get("title", "").lower()
-            if title and title not in seen_titles:
-                seen_titles.add(title)
-                unique.append(article)
-        logger.info(f"Filtered duplicates: {len(articles)} -> {len(unique)}")
-        return unique
-
-
-# Singleton getter
-_search_agent: Optional[NewsSearchAgent] = None
-
-
-async def get_search_agent() -> NewsSearchAgent:
-    """Get or create search agent."""
-    global _search_agent
-    if _search_agent is None:
-        _search_agent = NewsSearchAgent()
-    return _search_agent
+    async def search(query: str, max_results: int = 5) -> list:
+        """Search for tech news using the cleaned query."""
+        search_query = WebSearchAgent._build_search_query(query)
+        results = await SearchService.search_news(search_query, max_results)
+        logger.info("WebSearchAgent found %d results for %r", len(results), search_query)
+        return results

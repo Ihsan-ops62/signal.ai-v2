@@ -14,7 +14,6 @@ from typing import AsyncIterator, Optional
 import edge_tts
 from faster_whisper import WhisperModel
 
-# Fix: Updated import to match new flat structure
 from agents.conversation.conversation_agent import ConversationAgent
 
 logger = logging.getLogger(__name__)
@@ -26,11 +25,14 @@ _MAX_TTS_CHARS: int = 1500
 _WHISPER_MODEL_SIZE: str = os.getenv("WHISPER_MODEL", "small")
 _VAD_SILENCE_MS: int = 700
 
+# Use a highly expressive neural voice – Aria is conversational, Jenny is warm.
 _TTS_VOICE: str = os.getenv("TTS_VOICE", "en-US-AriaNeural")
-_TTS_RATE: str = "-5%"
+_TTS_RATE: str = "-5%"      
 _TTS_PITCH: str = "+0Hz"
 _USE_SSML: bool = os.getenv("TTS_USE_SSML", "true").lower() == "true"
+
 _ENABLE_AUDIO_PREPROCESS: bool = os.getenv("AUDIO_PREPROCESS", "true").lower() == "true"
+
 
 # Fast JSON serialiser
 try:
@@ -41,7 +43,8 @@ except ImportError:
     def _dumps(obj: dict) -> str:
         return json.dumps(obj)
 
-# Event hierarchy
+
+# Event hierarchy 
 class VoiceAgentEvent:
     __slots__ = ("type",)
     def __init__(self, type_: str) -> None:
@@ -76,6 +79,8 @@ class ErrorEvent(VoiceAgentEvent):
         super().__init__("error")
         self.message = message
 
+
+# Audio preprocessing 
 async def _preprocess_audio(audio_bytes: bytes) -> bytes:
     if not _ENABLE_AUDIO_PREPROCESS:
         return audio_bytes
@@ -95,6 +100,8 @@ async def _preprocess_audio(audio_bytes: bytes) -> bytes:
         logger.debug("Audio preprocessing skipped: %s", e)
         return audio_bytes
 
+
+# STT stage 
 async def stt_stream(
     audio_stream: AsyncIterator[bytes],
     whisper_model: WhisperModel,
@@ -112,6 +119,7 @@ async def stt_stream(
         yield ErrorEvent("No speech detected in the audio.")
         return
     yield STTOutputEvent(transcript)
+
 
 async def _transcribe(audio_bytes: bytes, model: WhisperModel) -> str:
     tmp_path: Optional[str] = None
@@ -146,6 +154,8 @@ async def _transcribe(audio_bytes: bytes, model: WhisperModel) -> str:
             with contextlib.suppress(OSError):
                 os.unlink(tmp_path)
 
+
+# Agent stage
 async def agent_stream(
     event_stream: AsyncIterator[VoiceAgentEvent],
     conversation_agent: ConversationAgent,
@@ -170,6 +180,8 @@ async def agent_stream(
         if response:
             yield AgentChunkEvent(response)
 
+
+# TTS stage with advanced SSML
 async def tts_stream(
     event_stream: AsyncIterator[VoiceAgentEvent],
     voice: str = _TTS_VOICE,
@@ -188,7 +200,9 @@ async def tts_stream(
             yield tts_event
     yield TTSEndEvent()
 
+
 def _clean_for_speech(text: str) -> str:
+    """Remove emojis, hashtags, and markdown that TTS would mispronounce."""
     emoji_pattern = re.compile(
         "["
         "\U0001F600-\U0001F64F"
@@ -205,32 +219,62 @@ def _clean_for_speech(text: str) -> str:
     text = re.sub(r"\s+", " ", text).strip()
     return text
 
+
 def _text_to_ssml(text: str) -> str:
+    """
+    Convert plain text into expressive SSML with:
+      - Pitch variation (random micro‑inflections)
+      - Slower rate at sentence ends
+      - Natural pause durations
+      - Emphasis on adjectives and numbers
+    """
+    # Escape XML special characters
     text = text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
+    # Split into sentences (rough)
     sentences = re.split(r"(?<=[.!?])\s+", text)
+
     ssml_parts = []
     for i, sent in enumerate(sentences):
         if not sent.strip():
             continue
+
+        # Process words within the sentence
         words = sent.split()
         processed_words = []
         for word in words:
+            # Add pitch variation on longer words (simulate natural inflection)
             if len(word) > 5 and random.random() < 0.3:
+                # Slight upward inflection
                 word = f'<prosody pitch="+5%">{word}</prosody>'
             elif word.isdigit() or re.match(r"^\d+[.,]?\d*$", word):
+                # Numbers stand out a bit
                 word = f'<prosody pitch="+3%" rate="slow">{word}</prosody>'
             processed_words.append(word)
+
         sent = " ".join(processed_words)
+
+        # Add a final slowing at the end of the sentence
         if i == len(sentences) - 1:
+            # Last sentence: slow down slightly at the end
             sent = f'<prosody rate="slow">{sent}</prosody>'
+
         ssml_parts.append(sent)
+
+    # Join sentences with appropriate breaks
     ssml_text = ""
     for i, sent in enumerate(ssml_parts):
         ssml_text += sent
         if i < len(ssml_parts) - 1:
+            # Pause between sentences (500ms feels natural)
             ssml_text += '<break time="500ms"/> '
+
+    # Add a short pause after the final sentence
     ssml_text += '<break time="200ms"/>'
+
+    # Wrap in speak tag
     return f'<speak version="1.0" xmlns="http://www.w3.org/2001/10/synthesis" xml:lang="en-US">{ssml_text}</speak>'
+
 
 async def _synthesise(
     text: str,
@@ -243,12 +287,24 @@ async def _synthesise(
         return
     if len(text) > _MAX_TTS_CHARS:
         text = text[:_MAX_TTS_CHARS]
+
     try:
         if use_ssml:
             ssml = _text_to_ssml(text)
-            communicate = edge_tts.Communicate(ssml, voice=voice, rate=rate, pitch=pitch)
+            communicate = edge_tts.Communicate(
+                ssml,
+                voice=voice,
+                # prosody tags override global rate/pitch, but we keep defaults
+                rate=rate,
+                pitch=pitch,
+            )
         else:
-            communicate = edge_tts.Communicate(text=text, voice=voice, rate=rate, pitch=pitch)
+            communicate = edge_tts.Communicate(
+                text=text,
+                voice=voice,
+                rate=rate,
+                pitch=pitch,
+            )
         async for chunk in communicate.stream():
             if chunk["type"] == "audio" and chunk.get("data"):
                 yield TTSAudioEvent(chunk["data"])
@@ -256,6 +312,8 @@ async def _synthesise(
         logger.error("[tts] synthesis failed: %s", exc)
         yield ErrorEvent(f"TTS error: {exc}")
 
+
+#  WebSocket session 
 class VoicePipelineSession:
     def __init__(
         self,
@@ -302,12 +360,15 @@ class VoicePipelineSession:
                 yield chunk
 
         producer_task = asyncio.create_task(_ws_producer())
+
         try:
             pipeline = stt_stream(_audio_source(), self.whisper)
             pipeline = agent_stream(pipeline, self.agent, self.session_id, self.voice_mode)
             pipeline = tts_stream(pipeline)
+
             self._interrupted.clear()
             self._current_task = asyncio.current_task()
+
             async for event in pipeline:
                 if self._interrupted.is_set():
                     break
@@ -321,6 +382,7 @@ class VoicePipelineSession:
                     await self._send({"type": "tts_end"})
                 elif isinstance(event, ErrorEvent):
                     await self._send({"type": "error", "message": event.message})
+
         except asyncio.CancelledError:
             logger.info("[voice] pipeline cancelled — session %s", self.session_id)
         except Exception as exc:

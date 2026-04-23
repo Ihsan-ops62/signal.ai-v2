@@ -1,25 +1,20 @@
-"""
-services/llm/ollama.py – Ollama service implementation.
-Preserves original ollama_service.py logic.
-"""
 import asyncio
 import logging
 from typing import AsyncIterator
 import httpx
 from langchain_ollama import ChatOllama
-from core.config import settings
+from core.config import config 
 from services.llm.base import BaseLLMService
 
 logger = logging.getLogger(__name__)
 
-
 class OllamaService(BaseLLMService):
     _DEFAULT_TEMPERATURE: float = 0.7
-    _LLM_TIMEOUT: float = 120.0
+    _LLM_TIMEOUT: float = 1200.0
 
     def __init__(self) -> None:
-        self.base_url: str = settings.OLLAMA_BASE_URL
-        self.model: str = settings.OLLAMA_MODEL
+        self.base_url: str = config.OLLAMA_BASE_URL
+        self.model: str = config.OLLAMA_MODEL
         self._default_llm = ChatOllama(
             base_url=self.base_url,
             model=self.model,

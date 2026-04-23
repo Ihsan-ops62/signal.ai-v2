@@ -1,62 +1,93 @@
-
 import asyncio
-import datetime
 import logging
 import re
 import time
-from collections import OrderedDict
-from typing import AsyncIterator, Callable, Dict, List, Optional
+from typing import Optional, Dict, Any, AsyncIterator, Callable, List
 
-from services.llm.router import get_llm_router
-from infrastructure.database.mongodb import get_mongodb
-from core.exceptions import LLMError
+from services.llm.ollama import OllamaService
 from agents.memory.memory_agent import MemoryAgent
 from agents.social.linkedin_agent import LinkedInAgent
 from agents.social.facebook_agent import FacebookAgent
 from agents.social.twitter_agent import TwitterAgent
-from agents.graph.workflow import NewsReporterGraph
-from agents.graph.state import AgentState
+from services.cache.session_manager import SessionManager
 
 logger = logging.getLogger(__name__)
 
 _STATE_AWAITING_CONFIRM = "awaiting_confirm"
-_STATE_CANCELLED = "cancelled"
-_STATE_POSTED = "posted"
+_STATE_CANCELLED        = "cancelled"
+_STATE_POSTED           = "posted"
 
 
 class ConversationAgent:
-    """Agent for managing multi-turn conversations with news and posting capabilities."""
-
-    def __init__(self, graph: NewsReporterGraph):
-        self.name = "ConversationAgent"
+    
+    def __init__(self, llm_service: OllamaService, graph) -> None:
+        self.llm   = llm_service
         self.graph = graph
-        self.max_context_messages = 20
-        self._contexts: OrderedDict[str, list] = OrderedDict()
-        self._pending_sessions: Dict[str, Dict] = {}
-        self._last_graph_state: Dict[str, Dict] = {}
-        self._max_contexts = 100
 
-    # ---------- Context Management ----------
     async def _get_context(self, session_id: str) -> list:
-        if session_id not in self._contexts:
-            saved = await MemoryAgent.load_context(session_id)
-            self._contexts[session_id] = saved or []
-            while len(self._contexts) > self._max_contexts:
-                self._contexts.popitem(last=False)
-        return self._contexts[session_id]
+        """Load conversation context from Redis, fall back to MongoDB if needed."""
+        # Try Redis first (for this worker session)
+        context = await SessionManager.load_context(session_id)
+        if context is not None:
+            return context
+        
+        # Fallback to MongoDB/MemoryAgent for older sessions
+        saved = await MemoryAgent.load_context(session_id)
+        if saved:
+            await SessionManager.save_context(session_id, saved)
+            return saved
+        
+        return []
 
-    async def _save_context(self, session_id: str, context: list, user_id: Optional[str] = None) -> None:
-        self._contexts[session_id] = context
+    async def _save_context(self, session_id: str, context: list,
+                            user_id: Optional[str] = None) -> None:
+        """Save context to both Redis and MongoDB for persistence."""
+        # Save to Redis 
+        await SessionManager.save_context(session_id, context, user_id=user_id)
+        # Also save to MongoDB 
         await MemoryAgent.save_context(session_id, context, user_id=user_id)
 
-    async def _add_to_context(self, session_id: str, role: str, message: str, user_id: Optional[str] = None) -> None:
+    async def _add_to_context(self, session_id: str, role: str, message: str,
+                              user_id: Optional[str] = None) -> None:
+        """Add message to conversation context."""
         ctx = await self._get_context(session_id)
         ctx.append({"role": role, "message": message})
-        if len(ctx) > self.max_context_messages:
-            ctx[:] = ctx[-self.max_context_messages:]
+        # Keep last 30 messages in memory (Redis doesn't have memory limits, but helps with API calls)
+        if len(ctx) > 30:
+            ctx = ctx[-30:]
         await self._save_context(session_id, ctx, user_id=user_id)
+    
+    # Pending session management 
+    async def _get_pending_session(self, session_id: str) -> Optional[Dict[str, Any]]:
+        """Load pending session state from Redis."""
+        return await SessionManager.load_pending_session(session_id)
+    
+    async def _save_pending_session(self, session_id: str, pending: Dict[str, Any],
+                                    user_id: Optional[str] = None) -> None:
+        """Save pending session state to both Redis and MongoDB."""
+        await SessionManager.save_pending_session(session_id, pending, user_id=user_id)
+        await MemoryAgent.save_session(session_id, pending)
+    
+    async def _delete_pending_session(self, session_id: str) -> None:
+        """Delete pending session from Redis."""
+        await SessionManager.delete_session(session_id)
+        await MemoryAgent.delete_session(session_id)
+    
+    # Graph state management
+    async def _get_last_graph_state(self, session_id: str) -> Optional[Dict[str, Any]]:
+        """Load last graph execution state from Redis."""
+        return await SessionManager.load_graph_state(session_id)
+    
+    async def _save_last_graph_state(self, session_id: str, state: Dict[str, Any],
+                                     user_id: Optional[str] = None) -> None:
+        """Save graph execution state to Redis."""
+        await SessionManager.save_graph_state(session_id, state, user_id=user_id)
+    
+    async def _clear_context(self, session_id: str) -> None:
+        """Clear session data completely."""
+        await SessionManager.delete_session(session_id)
+        await MemoryAgent.delete_session(session_id)
 
-    # ---------- Public API ----------
     async def chat(self, user_message: str, session_id: Optional[str] = None,
                    voice_mode: bool = False, user_id: Optional[str] = None) -> str:
         response = ""
@@ -65,63 +96,98 @@ class ConversationAgent:
         return response
 
     def _extract_post_content(self, user_message: str) -> Optional[str]:
-        """Extract explicit post content from user message."""
         msg = user_message.strip()
+
+        # Extract from explicit quotes first (always prioritized)
         quote_pattern = r'["\'](.*?)["\']|“([^”]*)”|‘([^’]*)’'
         matches = re.findall(quote_pattern, msg)
-        quoted = [part for m in matches for part in m if part]
+        quoted = []
+        for m in matches:
+            for part in m:
+                if part:
+                    quoted.append(part)
         if quoted:
             return max(quoted, key=len)
-
-        typo_variants = r'post|upload|uplaod'
-        patterns = [
-            rf'(?:{typo_variants})\s+this\s+post\s+(.+?)\s+to\s+linked[ -]?in',
-            rf'(?:{typo_variants})\s+this\s+(.+?)\s+to\s+linked[ -]?in',
-            rf'(?:{typo_variants})\s+this\s+(.+?)\s+to\s+linkedin',
-        ]
-        for pat in patterns:
-            match = re.search(pat, msg, re.IGNORECASE)
-            if match:
-                content = match.group(1).strip()
-                if content:
-                    return content
-
-        simple = re.search(r'^post\s+(.+?)\s+to\s+linked[ -]?in$', msg, re.IGNORECASE)
-        if simple:
-            return simple.group(1).strip()
-
+        
+        # Extract based on natural conversational intent prefixes
         lower_msg = msg.lower()
-        if lower_msg.startswith("post ") or lower_msg.startswith("upload ") or lower_msg.startswith("uplaod "):
-            if lower_msg.startswith("post "):
-                content = msg[5:].strip()
-            elif lower_msg.startswith("upload "):
-                content = msg[7:].strip()
-            else:
-                content = msg[7:].strip()
-            content = re.sub(r'\s+to\s+linked[ -]?in$', '', content, flags=re.IGNORECASE)
-            if content and len(content) < 1000:
-                return content
+        prefixes = [
+            "i want to post that", "i want to post", 
+            "can you post that", "can you post", 
+            "post that", "post this", "post the following",
+            "upload that", "upload this", 
+            "share that", "share this",
+            "tweet that", "tweet this"
+        ]
+
+        extracted = None
+        for prefix in prefixes:
+            idx = lower_msg.find(prefix)
+            if idx != -1:
+                start_idx = idx + len(prefix)
+                # Strip leading colons, dashes, or whitespace
+                extracted = msg[start_idx:].lstrip(" :-,")
+                break
+
+        # Fallback for simple "post [content]" and other weak prefixes
+        if not extracted and lower_msg.startswith("post "):
+            extracted = msg[5:].strip()
+        elif not extracted:
+            # Try other weak prefixes
+            for weak_prefix in ["share ", "upload ", "tweet "]:
+                if lower_msg.startswith(weak_prefix):
+                    extracted = msg[len(weak_prefix):].strip()
+                    break
+
+        if extracted:
+            # Clean up destination tags at the end of the message (e.g., " to linkedin")
+            extracted = re.sub(r'(?i)\s+(to|on|in)\s+(linkedin|facebook|twitter|fb|x)[.\s]*$', '', extracted)
+            
+            # Clean up any lingering edge quotes
+            extracted = extracted.strip(' "\'”’“‘')
+                        # Semantic check - reject self-introductions without explicit post intent
+            if not (any(msg.lower().startswith(p) for p in ["i want to post", "can you post", "post that", "post this", "post it"])):
+                if self._is_self_introduction(extracted):
+                    return None
+                        # Ensure it's substantial enough to be a post
+            if len(extracted) > 5:
+                return extracted
+                
         return None
 
     def detect_platforms(self, user_message: str) -> List[str]:
-        """Detect which social platforms are mentioned."""
         msg = user_message.lower()
         platforms = []
         if "linkedin" in msg or "linked in" in msg:
             platforms.append("linkedin")
         if "facebook" in msg or "fb" in msg:
             platforms.append("facebook")
-        if "twitter" in msg or "tweet" in msg:
+        if "twitter" in msg or "tweet" in msg or " x " in msg or msg.endswith(" x"):
             platforms.append("twitter")
         if not platforms:
             platforms.append("linkedin")
         return platforms
 
+    def _is_self_introduction(self, text: str) -> bool:
+        """Detect if text is a self-introduction rather than post content.
+        
+        This helps reject patterns like "I am a software developer..." 
+        when they're not explicitly marked as post content.
+        """
+        if not text:
+            return False
+        lower = text.lower()
+        intro_signals = [
+            "i am a ", "i'm a ", "my name is", "i work ", 
+            "i'm focused on", "i specialize", "about me:", "profile:"
+        ]
+        return any(signal in lower for signal in intro_signals)
+
     async def _handle_post_without_news(self, session_id: str, user_message: str, user_id: Optional[str] = None) -> Optional[str]:
-        """Guard against posting without existing news summaries."""
-        cached = self._last_graph_state.get(session_id)
+        """If user wants to post but no news summaries exist, offer to search first."""
+        cached = await self._get_last_graph_state(session_id)  
         if cached and cached.get("summaries"):
-            return None
+            return None  # proceed normally
         msg = ("I don't have any recent news to post. "
                "Would you like me to **search for tech news** first? "
                "Just say something like *'Find AI news'* and then you can post it.")
@@ -129,57 +195,58 @@ class ConversationAgent:
         return msg
 
     async def chat_stream(
-        self,
-        user_message: str,
-        session_id: Optional[str] = None,
-        voice_mode: bool = False,
-        progress_callback: Optional[Callable] = None,
+        self, user_message: str, session_id: Optional[str] = None,
+        voice_mode: bool = False, progress_callback: Optional[Callable] = None,
         user_id: Optional[str] = None,
     ) -> AsyncIterator[str]:
-        """Stream responses for a user message, handling intents and workflows."""
         if not session_id:
             session_id = "default"
 
-        # Direct post with explicit content
         direct_content = self._extract_post_content(user_message)
         if direct_content:
-            if session_id in self._pending_sessions:
+            # Detect which platforms the user wants to post to
+            platforms = self.detect_platforms(user_message)
+            
+            pending = await self._get_pending_session(session_id)
+            if pending:
                 logger.info("Clearing pending session %s due to new direct post", session_id)
-                del self._pending_sessions[session_id]
-                await MemoryAgent.delete_session(session_id)
-
-            try:
-                # Try LinkedIn first, can extend to other platforms
-                result = await LinkedInAgent.post(content=direct_content, username=user_id)
-                if result.get("success"):
-                    post_id = result.get("post_id")
-                    if post_id and post_id != "unknown":
-                        link = f"https://www.linkedin.com/feed/update/{post_id}"
-                        response = f" Posted to LinkedIn!\n\n[View post]({link})"
+                await self._delete_pending_session(session_id)
+            
+            results = []
+            for platform in platforms:
+                try:
+                    if platform == "linkedin":
+                        result = await LinkedInAgent.post(content=direct_content, username=user_id)
+                    elif platform == "facebook":
+                        result = await FacebookAgent.post(content=direct_content, username=user_id)
+                    elif platform == "twitter":
+                        result = await TwitterAgent.post(content=direct_content, username=user_id)
                     else:
-                        response = "Posted successfully!"
-                else:
-                    response = f"Posting failed: {result.get('error', 'Unknown error')}"
-            except Exception as e:
-                logger.error("Direct post failed: %s", e)
-                response = f"Could not post: {e}"
-
+                        result = {"success": False, "error": f"Unsupported platform {platform}"}
+                    result["platform"] = platform
+                    results.append(result)
+                except Exception as e:
+                    logger.error(f"Direct post to {platform} failed: %s", e)
+                    results.append({"success": False, "error": str(e), "platform": platform})
+            
+            # Build response message
+            response = self._build_multi_platform_response(results)
+            
             await self._add_to_context(session_id, "user", user_message, user_id=user_id)
             await self._add_to_context(session_id, "assistant", response, user_id=user_id)
             yield response
             return
 
-        # Restore pending session if exists
-        if session_id not in self._pending_sessions:
+        pending = await self._get_pending_session(session_id)
+        if not pending:
             saved = await MemoryAgent.load_session(session_id)
             if saved:
-                self._pending_sessions[session_id] = saved
-
-        pending = self._pending_sessions.get(session_id)
+                await self._save_pending_session(session_id, saved)
+                pending = saved
 
         if pending:
             graph_state = pending["graph_state"]
-            status = pending["status"]
+            status      = pending["status"]
 
             reasoning_response = await self._handle_reasoning(
                 user_message, session_id, graph_state, voice_mode, user_id=user_id
@@ -211,30 +278,37 @@ class ConversationAgent:
             if action == "post_social":
                 direct_content = self._extract_post_content(user_message)
                 if direct_content:
-                    try:
-                        result = await LinkedInAgent.post(content=direct_content, username=user_id)
-                        if result.get("success"):
-                            post_id = result.get("post_id")
-                            if post_id and post_id != "unknown":
-                                link = f"https://www.linkedin.com/feed/update/{post_id}"
-                                response = f"Posted to LinkedIn!\n\n[View post]({link})"
+                    # Multi-platform direct post (similar to above)
+                    platforms = self.detect_platforms(user_message)
+                    results = []
+                    for platform in platforms:
+                        try:
+                            if platform == "linkedin":
+                                result = await LinkedInAgent.post(content=direct_content, username=user_id)
+                            elif platform == "facebook":
+                                result = await FacebookAgent.post(content=direct_content, username=user_id)
+                            elif platform == "twitter":
+                                result = await TwitterAgent.post(content=direct_content, username=user_id)
                             else:
-                                response = "Posted successfully!"
-                        else:
-                            response = f"Posting failed: {result.get('error', 'Unknown error')}"
-                    except Exception as e:
-                        response = f"Could not post: {e}"
+                                result = {"success": False, "error": f"Unsupported platform {platform}"}
+                            result["platform"] = platform
+                            results.append(result)
+                        except Exception as e:
+                            logger.error(f"Direct post to {platform} failed: %s", e)
+                            results.append({"success": False, "error": str(e), "platform": platform})
+                    response = self._build_multi_platform_response(results)
                     await self._add_to_context(session_id, "user", user_message, user_id=user_id)
                     await self._add_to_context(session_id, "assistant", response, user_id=user_id)
                     yield response
                     return
-
+                
+                # Guard: check if we have news summaries to post
                 no_news_msg = await self._handle_post_without_news(session_id, user_message, user_id=user_id)
                 if no_news_msg:
                     yield no_news_msg
                     return
 
-                cached = self._last_graph_state.get(session_id)
+                cached = await self._get_last_graph_state(session_id)
                 if cached and cached.get("summaries"):
                     response = await self._execute_action_with_cached_state(
                         user_message, cached, session_id, voice_mode, progress_callback, user_id=user_id
@@ -260,7 +334,6 @@ class ConversationAgent:
             yield response
             return
 
-        # Freeform chat fallback
         full_response = ""
         async for token in self._stream_freeform(user_message, session_id, voice_mode):
             full_response += token
@@ -268,32 +341,62 @@ class ConversationAgent:
         await self._add_to_context(session_id, "user", user_message, user_id=user_id)
         await self._add_to_context(session_id, "assistant", full_response, user_id=user_id)
 
-    async def _stream_freeform(self, user_message: str, session_id: str, voice_mode: bool) -> AsyncIterator[str]:
-        """Handle general conversation not matching specific actions."""
-        ctx = await self._get_context(session_id)
+    def _build_multi_platform_response(self, results: List[Dict]) -> str:
+        """Construct a user-friendly message from multiple platform post results."""
+        successes = []
+        failures = []
+        for res in results:
+            platform = res.get("platform", "unknown")
+            if res.get("success"):
+                post_id = res.get("post_id") or res.get("tweet_id")
+                if post_id and post_id != "unknown":
+                    if platform == "linkedin":
+                        link = f"https://www.linkedin.com/feed/update/{post_id}"
+                    elif platform == "twitter":
+                        link = f"https://twitter.com/i/web/status/{post_id}"
+                    else:
+                        link = ""
+                    if link:
+                        successes.append(f"{platform.capitalize()}: [View post]({link})")
+                    else:
+                        successes.append(f"{platform.capitalize()}")
+                else:
+                    successes.append(f"{platform.capitalize()}")
+            else:
+                failures.append(f"{platform.capitalize()}: {res.get('error', 'Unknown error')}")
+        
+        parts = []
+        if successes:
+            parts.append("**Posted successfully to:**\n" + "\n".join(f"• {s}" for s in successes))
+        if failures:
+            parts.append("**Failed to post to:**\n" + "\n".join(f"• {f}" for f in failures))
+        return "\n\n".join(parts)
+
+    async def _stream_freeform(self, user_message: str, session_id: str,
+                                voice_mode: bool) -> AsyncIterator[str]:
+        ctx         = await self._get_context(session_id)
         context_str = self._build_context_from_list(ctx)
 
         if voice_mode:
             prompt = (
-                'You are "Alex", a friendly AI assistant speaking naturally.\n'
+                'You are "Signal", a friendly AI assistant speaking naturally.\n'
                 f"Conversation context:\n{context_str}\n"
                 f'User just said: "{user_message}"\n'
-                "Respond in 1-2 spoken sentences. No emojis or hashtags."
+                "Respond in spoken sentences. No emojis or hashtags."
             )
         else:
             prompt = (
-                'You are "Signal", a warm, human-like AI assistant. '
-                "You help with tech news and LinkedIn/Facebook/Twitter posts.\n\n"
+                'You are "Signal", a warm, highly capable AI assistant. '
+                "You help with tech news, social media posts, and discussing about technology.\n\n"
                 f"Current conversation:\n{context_str}\n"
                 f'User just said: "{user_message}"\n\n'
-                "Respond naturally, briefly, and helpfully. Use occasional emojis.\n"
-                "You can search tech news and post to social media.\n"
-                "Keep responses to 1-2 sentences unless more is needed."
+                "Respond naturally, intelligently, and helpfully. "
+                "Use emojis, when appropriate. "
+                "Keep responses concise (1-3 sentences) unless the user asks for a detailed explanation."
             )
 
         try:
-            llm = await get_llm_router()
-            async for token in llm.generate_stream(prompt, temperature=0.7):
+            async for token in self.llm.generate_stream(prompt, temperature=0.7):
                 yield token
         except Exception as e:
             logger.error("LLM streaming error: %s", e)
@@ -302,7 +405,6 @@ class ConversationAgent:
     async def _handle_reasoning(self, user_message: str, session_id: str,
                                  graph_state: dict, voice_mode: bool,
                                  user_id: Optional[str] = None) -> Optional[str]:
-        """Handle follow-up intents like 'search again' or 'reformat'."""
         msg_lower = user_message.lower()
         search_again_triggers = {
             "search again", "another news", "different news", "try again",
@@ -325,7 +427,6 @@ class ConversationAgent:
 
     async def _reformat_and_ask(self, session_id: str, graph_state: dict,
                                   platform: str, voice_mode: bool) -> str:
-        """Regenerate formatted post and ask for confirmation."""
         try:
             summaries = graph_state["summaries"]
             if platform == "facebook":
@@ -340,11 +441,13 @@ class ConversationAgent:
                 return "Sorry, I couldn't generate a new format. Want me to try a different search?"
             graph_state["formatted_content"] = new_post
             state_copy = {k: v for k, v in graph_state.items() if k != "progress_callback"}
-            self._pending_sessions[session_id] = {
+            
+            pending_data = {
                 "graph_state": state_copy, "status": _STATE_AWAITING_CONFIRM,
                 "created_at": time.monotonic(),
             }
-            await MemoryAgent.save_session(session_id, self._pending_sessions[session_id])
+            await self._save_pending_session(session_id, pending_data)
+            
             return (
                 f"Here's a reformatted {platform.capitalize()} post — does this look better?\n\n{new_post}\n\n"
                 "Reply **yes** to publish, **no** to cancel, or **'reformat'** to try again."
@@ -354,25 +457,24 @@ class ConversationAgent:
 
     async def _handle_confirmation(self, user_message: str, session_id: str,
                                     voice_mode: bool, user_id: Optional[str] = None) -> str:
-        """Process user confirmation (yes/no) for posting."""
-        pending = self._pending_sessions.get(session_id)
+        pending = await self._get_pending_session(session_id)
         if not pending:
             return "Sorry, I lost track of that. Could you start over?"
 
         graph_state = pending["graph_state"]
-        msg_lower = user_message.lower()
+        msg_lower   = user_message.lower()
 
         confirmed = any(w in msg_lower for w in
                         ["yes", "okay", "ok", "sure", "go ahead", "post it", "yep", "yeah", "do it", "publish"])
-        declined = any(w in msg_lower for w in
-                       ["no", "nope", "cancel", "don't", "stop", "nah", "negative"])
+        declined  = any(w in msg_lower for w in
+                        ["no", "nope", "cancel", "don't", "stop", "nah", "negative"])
 
         if confirmed:
             return await self._do_post(session_id, graph_state, voice_mode, user_id=user_id)
 
         if declined:
-            self._pending_sessions[session_id]["status"] = _STATE_CANCELLED
-            await MemoryAgent.save_session(session_id, self._pending_sessions[session_id])
+            pending["status"] = _STATE_CANCELLED
+            await self._save_pending_session(session_id, pending)
             platforms = graph_state.get("target_platforms", ["linkedin"])
             platform_names = ", ".join(p.capitalize() for p in platforms)
             return (
@@ -390,17 +492,16 @@ class ConversationAgent:
 
     async def _handle_post_after_cancel(self, user_message: str, session_id: str,
                                          voice_mode: bool, user_id: Optional[str] = None) -> Optional[str]:
-        """Handle user changing mind after cancelling."""
         msg_lower = user_message.lower()
-        pending = self._pending_sessions.get(session_id)
+        pending   = await self._get_pending_session(session_id)
         wants_post = any(w in msg_lower for w in
                          ["post it", "yes", "okay", "ok", "sure", "go ahead", "publish",
                           "want to post", "changed my mind"])
         if wants_post and pending:
             formatted = pending["graph_state"].get("formatted_content", "")
             if formatted:
-                self._pending_sessions[session_id]["status"] = _STATE_AWAITING_CONFIRM
-                await MemoryAgent.save_session(session_id, self._pending_sessions[session_id])
+                pending["status"] = _STATE_AWAITING_CONFIRM
+                await self._save_pending_session(session_id, pending)
                 platforms = pending["graph_state"].get("target_platforms", ["linkedin"])
                 platform_names = ", ".join(p.capitalize() for p in platforms)
                 return f"Sure! Here's that post again (to {platform_names}):\n\n{formatted}\n\nSay **yes** to publish it."
@@ -419,26 +520,23 @@ class ConversationAgent:
                         new_post = await self.graph.formatter.format_for_linkedin(summaries)
                     if new_post:
                         pending["graph_state"]["formatted_content"] = new_post
-                        self._pending_sessions[session_id]["status"] = _STATE_AWAITING_CONFIRM
-                        await MemoryAgent.save_session(session_id, self._pending_sessions[session_id])
+                        pending["status"] = _STATE_AWAITING_CONFIRM
+                        await self._save_pending_session(session_id, pending)
                         platform_names = ", ".join(p.capitalize() for p in platforms)
                         return f"Okay, I've re-drafted the post for {platform_names}:\n\n{new_post}\n\nReply **yes** to publish or **no** to cancel."
         return None
 
     async def _do_post(self, session_id: str, graph_state: dict, voice_mode: bool,
                        user_id: Optional[str] = None) -> str:
-        """Execute the actual posting via graph resume."""
         try:
             final_state = await self.graph.resume(graph_state, confirmed=True, username=user_id)
-            self._pending_sessions.pop(session_id, None)
-            await MemoryAgent.delete_session(session_id)
+            await self._delete_pending_session(session_id)
             return self._build_post_result_message(final_state.get("post_result", {}))
         except Exception as exc:
             logger.error("Resume/post failed: %s", exc)
             return f"Something went wrong while posting: {exc}. Want me to try again?"
 
     def _build_post_result_message(self, post_result: dict) -> str:
-        """Format posting result for user."""
         if not post_result:
             return "Done!"
         if isinstance(post_result, list):
@@ -451,13 +549,13 @@ class ConversationAgent:
                     failures.append(f"{res.get('platform', 'unknown')}: {res.get('error')}")
             msg = ""
             if successes:
-                msg += f"Posted to {', '.join(s.capitalize() for s in successes)}!\n"
+                msg += f" Posted to {', '.join(s.capitalize() for s in successes)}!\n"
             if failures:
-                msg += f"Failed: {', '.join(failures)}"
+                msg += f" Failed: {', '.join(failures)}"
             return msg.strip()
         success = post_result.get("success", False)
         post_id = post_result.get("post_id") or post_result.get("tweet_id")
-        error = post_result.get("error", "unknown error")
+        error   = post_result.get("error", "unknown error")
         platform = post_result.get("platform", "linkedin")
         if success:
             if post_id and post_id != "unknown":
@@ -475,7 +573,6 @@ class ConversationAgent:
     async def _execute_action(self, user_message: str, action: str, session_id: str,
                                voice_mode: bool, progress_callback: Optional[Callable] = None,
                                user_id: Optional[str] = None) -> str:
-        """Execute a workflow action (search, post, etc.) using the graph."""
         try:
             platforms = self.detect_platforms(user_message)
             initial_state = self.graph._initial_state(
@@ -491,17 +588,18 @@ class ConversationAgent:
             )
 
             if action == "search_news" and state.get("summaries") and not state.get("awaiting_confirmation"):
-                self._last_graph_state[session_id] = state
+                await self._save_last_graph_state(session_id, state)
 
             if state.get("awaiting_confirmation"):
-                formatted = state.get("formatted_content", "")
-                summaries = state.get("summaries", [])
+                formatted  = state.get("formatted_content", "")
+                summaries  = state.get("summaries", [])
                 state_copy = {k: v for k, v in state.items() if k != "progress_callback"}
-                self._pending_sessions[session_id] = {
+                
+                pending_data = {
                     "graph_state": state_copy, "status": _STATE_AWAITING_CONFIRM,
                     "created_at": time.monotonic(),
                 }
-                await MemoryAgent.save_session(session_id, self._pending_sessions[session_id])
+                await self._save_pending_session(session_id, pending_data)
 
                 parts = []
                 if summaries:
@@ -531,7 +629,6 @@ class ConversationAgent:
         voice_mode: bool, progress_callback: Optional[Callable] = None,
         user_id: Optional[str] = None,
     ) -> str:
-        """Use previously fetched news to format a post without re-searching."""
         summaries = cached_state.get("summaries", [])
         if not summaries:
             return "I don't have any recent news summaries to post. Would you like me to search first?"
@@ -559,12 +656,13 @@ class ConversationAgent:
             "formatted_content": formatted,
             "username": user_id,
         }
-        self._pending_sessions[session_id] = {
+        
+        pending_data = {
             "graph_state": graph_state,
             "status": _STATE_AWAITING_CONFIRM,
             "created_at": time.monotonic(),
         }
-        await MemoryAgent.save_session(session_id, self._pending_sessions[session_id])
+        await self._save_pending_session(session_id, pending_data)
 
         platform_names = ", ".join(p.capitalize() for p in platforms)
         parts = [
@@ -574,34 +672,41 @@ class ConversationAgent:
         return "\n".join(parts)
 
     def _format_graph_response(self, state: dict, voice_mode: bool = False) -> str:
-        """Extract user-facing response from graph state."""
         return state.get("user_response") or "Done!"
 
     def detect_action(self, user_message: str) -> Optional[str]:
-        """Determine the user's intent from the message."""
-        msg_lower = user_message.lower()
+        msg_lower     = user_message.lower()
         news_keywords = {"news", "latest", "update", "headline", "article", "story", "find"}
-        post_keywords = {"post", "share", "publish", "upload", "uplaod"}
-        search_kws = {"search", "find", "get", "fetch"}
+        post_keywords = {"post", "share", "publish", "upload", "uplaod", "tweet"}
+        search_kws    = {"search", "find", "get", "fetch"}
 
-        has_news = any(kw in msg_lower for kw in news_keywords)
-        has_post = any(kw in msg_lower for kw in post_keywords)
+        has_news   = any(kw in msg_lower for kw in news_keywords)
+        has_post   = any(kw in msg_lower for kw in post_keywords)
         has_search = any(kw in msg_lower for kw in search_kws)
 
-        if has_news and has_post:
-            return "news_then_post"
+        # Direct post detection
         if has_post and not has_news:
             return "post_social"
+            
+        if has_news and has_post:
+            return "news_then_post"
+            
+        # Standard conversation vs Search detection
         if has_news or has_search:
-            trivial = {"about yourself", "how are you", "what's up", "hello", "hi"}
+            # Expanded conversational bypass list
+            trivial = {
+                "about yourself", "how are you", "what's up", "hello", "hi", 
+                "i am a", "i work with", "i build"
+            }
             if any(t in msg_lower for t in trivial):
-                return None
+                return None  # Route to freeform chat
+                
             if len(user_message.split()) >= 3:
                 return "search_news"
+                
         return None
 
     def _build_context_from_list(self, context: list) -> str:
-        """Convert context list to string for prompts."""
         if not context:
             return "Start of conversation."
         recent = context[-6:]
@@ -611,108 +716,8 @@ class ConversationAgent:
         )
 
     def clear_context(self, session_id: Optional[str] = None):
-        """Clear conversation context and pending state."""
         if session_id:
-            self._pending_sessions.pop(session_id, None)
-            self._last_graph_state.pop(session_id, None)
-            self._contexts.pop(session_id, None)
+            asyncio.create_task(SessionManager.delete_session(session_id))
             asyncio.create_task(MemoryAgent.delete_session(session_id))
             asyncio.create_task(MemoryAgent.save_context(session_id, []))
-        else:
-            self._contexts.clear()
-            self._pending_sessions.clear()
-            self._last_graph_state.clear()
         logger.info("Conversation context cleared")
-
-    # ---------- New methods for compatibility with old routes (optional) ----------
-    async def start_conversation(self, user_id: str, initial_message: Optional[str] = None) -> dict:
-        """Legacy method for compatibility."""
-        mongodb = await get_mongodb()
-        conversation = {
-            "user_id": user_id,
-            "messages": [],
-            "created_at": datetime.utcnow(),
-            "updated_at": datetime.utcnow(),
-        }
-        if initial_message:
-            conversation["messages"].append({"role": "user", "content": initial_message})
-        result = await mongodb.insert_one("conversations", conversation)
-        conversation["_id"] = str(result.inserted_id)
-        return conversation
-
-    async def add_message(self, conversation_id: str, role: str, content: str) -> dict:
-        mongodb = await get_mongodb()
-        message = {"role": role, "content": content, "timestamp": datetime.utcnow().isoformat()}
-        await mongodb.update_one(
-            "conversations",
-            {"_id": conversation_id},
-            {"$push": {"messages": message}, "$set": {"updated_at": datetime.utcnow()}}
-        )
-        return message
-
-    async def get_conversation(self, conversation_id: str) -> dict:
-        mongodb = await get_mongodb()
-        conv = await mongodb.find_one("conversations", {"_id": conversation_id})
-        if not conv:
-            raise ValueError(f"Conversation not found: {conversation_id}")
-        return conv
-
-    async def get_context(self, conversation_id: str, num_messages: int = None) -> List[dict]:
-        conv = await self.get_conversation(conversation_id)
-        messages = conv.get("messages", [])
-        limit = num_messages or self.max_context_messages
-        return [{"role": m["role"], "content": m["content"]} for m in messages[-limit:]]
-
-    async def generate_response(self, conversation_id: str, user_message: str, system_prompt: Optional[str] = None) -> str:
-        context = await self.get_context(conversation_id)
-        messages = [{"role": "system", "content": system_prompt or "You are a helpful AI news assistant."}] + context
-        messages.append({"role": "user", "content": user_message})
-        llm = await get_llm_router()
-        response = await llm.chat(messages, max_tokens=500, temperature=0.7)
-        await self.add_message(conversation_id, "user", user_message)
-        await self.add_message(conversation_id, "assistant", response.text)
-        return response.text
-
-    async def summarize_conversation(self, conversation_id: str) -> str:
-        conv = await self.get_conversation(conversation_id)
-        messages = conv.get("messages", [])
-        if len(messages) < 2:
-            return "Conversation just started"
-        conv_text = "\n".join([f"{m['role']}: {m['content']}" for m in messages[-10:]])
-        llm = await get_llm_router()
-        prompt = f"Summarize this conversation in 2-3 sentences:\n\n{conv_text}\n\nSummary:"
-        response = await llm.generate(prompt=prompt, max_tokens=150, temperature=0.5)
-        mongodb = await get_mongodb()
-        await mongodb.update_one("conversations", {"_id": conversation_id}, {"$set": {"metadata.summary": response.text}})
-        return response.text
-
-    async def extract_topic(self, conversation_id: str) -> str:
-        conv = await self.get_conversation(conversation_id)
-        first_msg = conv.get("messages", [{}])[0].get("content", "")
-        if not first_msg:
-            return "general"
-        llm = await get_llm_router()
-        prompt = f'What is the main topic of this message (max 3 words):\n\n"{first_msg}"\n\nTopic:'
-        response = await llm.generate(prompt=prompt, max_tokens=20, temperature=0.3)
-        topic = response.text.strip().lower()
-        mongodb = await get_mongodb()
-        await mongodb.update_one("conversations", {"_id": conversation_id}, {"$set": {"metadata.topic": topic}})
-        return topic
-
-    async def get_user_conversations(self, user_id: str, limit: int = 10) -> List[dict]:
-        mongodb = await get_mongodb()
-        return await mongodb.find_many("conversations", {"user_id": user_id}, limit=limit)
-
-
-# Module-level singleton
-_conversation_agent: Optional[ConversationAgent] = None
-
-
-async def get_conversation_agent() -> ConversationAgent:
-    """Get or create conversation agent (requires graph initialization)."""
-    global _conversation_agent
-    if _conversation_agent is None:
-        from graph.workflow import NewsReporterGraph
-        graph = NewsReporterGraph()
-        _conversation_agent = ConversationAgent(graph)
-    return _conversation_agent

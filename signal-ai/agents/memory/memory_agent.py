@@ -1,8 +1,9 @@
+import hashlib
 import logging
 from datetime import datetime, timezone
 from typing import Optional, List, Dict, Any
-
 from infrastructure.database.mongodb import MongoDB
+from infrastructure.database.models import UserQuery, NewsArticle
 
 logger = logging.getLogger(__name__)
 
@@ -17,15 +18,15 @@ class MemoryAgent:
     async def store_query(
         query: str, intent: str, response: str, user_id: Optional[str] = None
     ) -> Optional[str]:
-        doc = {
-            "query_text": query,
-            "intent": intent,
-            "response": response,
-            "user_id": user_id,
-            "created_at": _now_utc(),
-        }
+        doc = UserQuery(
+            query_text=query,
+            intent=intent,
+            response=response,
+            user_id=user_id,
+            created_at=_now_utc(),
+        )
         try:
-            result = await MongoDB.get_collection("queries").insert_one(doc)
+            result = await MongoDB.get_collection("queries").insert_one(doc.model_dump())
             return str(result.inserted_id) if result else None
         except Exception as exc:
             logger.warning("Could not store query (non-fatal): %s", exc)
@@ -33,16 +34,16 @@ class MemoryAgent:
 
     @staticmethod
     async def store_news_article(article: dict) -> None:
-        doc = {
-            "title": article.get("title", ""),
-            "content": article.get("body", article.get("description", "")),
-            "source": article.get("source", article.get("url", "")),
-            "url": article.get("url", ""),
-            "date": article.get("date"),
-            "created_at": _now_utc(),
-        }
+        doc = NewsArticle(
+            title=article.get("title", ""),
+            content=article.get("body", article.get("description", "")),
+            source=article.get("source", article.get("url", "")),
+            url=article.get("url", ""),
+            date=article.get("date"),
+            created_at=_now_utc(),
+        )
         try:
-            await MongoDB.get_collection("news").insert_one(doc)
+            await MongoDB.get_collection("news").insert_one(doc.model_dump())
         except Exception as exc:
             logger.debug("Skipping duplicate news article %r: %s", article.get("title", "?"), exc)
 
@@ -56,9 +57,13 @@ class MemoryAgent:
         post_id = post_result.get("post_id")
         platform = post_result.get("platform", "linkedin")
         status = "success" if post_result.get("success") else "failed"
+
+        content_hash = hashlib.md5(content.encode()).hexdigest() if content else None
+
         doc = {
             "user_query_id": query_id,
             "content": content,
+            "content_hash": content_hash,
             "platform": platform,
             "platform_post_id": post_id,
             "status": status,
@@ -66,7 +71,9 @@ class MemoryAgent:
             "created_at": _now_utc(),
             "user_id": user_id,
         }
+
         collection = MongoDB.get_collection("posts")
+
         try:
             if post_id:
                 await collection.update_one(
@@ -77,6 +84,7 @@ class MemoryAgent:
             else:
                 doc_no_null = {k: v for k, v in doc.items() if k != "platform_post_id"}
                 await collection.insert_one(doc_no_null)
+
         except Exception as exc:
             logger.error("Failed to store post result (non-fatal): %s", exc)
 
@@ -143,10 +151,13 @@ class MemoryAgent:
     async def get_recent_activities(user_id: Optional[str] = None, limit: int = 20) -> List[Dict]:
         queries_coll = MongoDB.get_collection("queries")
         posts_coll = MongoDB.get_collection("posts")
+
         query_filter = {"user_id": user_id} if user_id else {}
-        post_filter = {"user_id": user_id} if user_id else {}
+        post_filter = {}
+
         queries = await queries_coll.find(query_filter).sort("created_at", -1).limit(limit).to_list(limit)
         posts = await posts_coll.find(post_filter).sort("created_at", -1).limit(limit).to_list(limit)
+
         activities = []
         for q in queries:
             activities.append({
@@ -163,5 +174,6 @@ class MemoryAgent:
                 "status": p.get("status"),
                 "content_preview": p.get("content", "")[:100],
             })
-        activities.sort(key=lambda x: x["timestamp"] if x["timestamp"] else _now_utc(), reverse=True)
+
+        activities.sort(key=lambda x: x["timestamp"], reverse=True)
         return activities[:limit]

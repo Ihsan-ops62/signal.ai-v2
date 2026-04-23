@@ -1,7 +1,3 @@
-"""
-services/search/search_service.py – News search service.
-Preserves original search_service.py logic.
-"""
 import asyncio
 import logging
 import os
@@ -84,7 +80,6 @@ _TECH_ABBREVS = {
     "gcp",
 }
 
-
 def _extract_keywords(query: str) -> list[str]:
     q = query.lower().strip()
     multi_phrases = [
@@ -118,11 +113,9 @@ def _extract_keywords(query: str) -> list[str]:
     logger.debug("Extracted keywords from %r → %r", query, result)
     return result
 
-
 def _article_matches(title: str, body: str, keywords: list[str]) -> bool:
     text = (title + " " + body).lower()
     return any(kw in text for kw in keywords)
-
 
 def _pick_feeds(keywords: list[str]) -> list[str]:
     feeds: list[str] = []
@@ -135,7 +128,6 @@ def _pick_feeds(keywords: list[str]) -> list[str]:
         if f not in feeds:
             feeds.append(f)
     return feeds
-
 
 async def _fetch_one_rss(
     feed_url: str,
@@ -208,15 +200,12 @@ async def _fetch_one_rss(
         logger.debug("RSS %s → %d matching articles", feed_url, len(articles))
     return articles
 
-
 class SearchService:
 
     async def search(self, query: str, category: Optional[str] = None, limit: int = 10) -> list:
-        """Alias for search_news with category parameter (ignored for now)."""
         return await self.search_news(query, max_results=limit)
 
     async def get_trending(self, limit: int = 10) -> list:
-        """Get trending news by searching for 'technology'."""
         return await self.search_news("technology", max_results=limit)
 
     @staticmethod
@@ -439,13 +428,9 @@ class SearchService:
             })
         return results
 
-
-# Singleton getter
 _search_service: Optional[SearchService] = None
 
-
 async def get_search_service() -> SearchService:
-    """Get or create search service singleton."""
     global _search_service
     if _search_service is None:
         _search_service = SearchService()

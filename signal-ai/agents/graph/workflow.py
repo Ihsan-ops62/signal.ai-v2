@@ -1,23 +1,20 @@
-"""
-LangGraph workflow for news search, summarisation, formatting, confirmation, and posting.
-"""
 import asyncio
 import logging
 import os
-from typing import Any, Callable, Dict, List, Optional
+from typing import Optional, TypedDict, Callable, List, Any, Dict
 
 from langgraph.graph import END, StateGraph
 
 from agents.formatter.formatter_agent import FormatterAgent
 from agents.intent.intent_agent import IntentAgent
 from agents.social.linkedin_agent import LinkedInAgent
-from agents.social.facebook_agent import FacebookAgent
-from agents.social.twitter_agent import TwitterAgent
 from agents.memory.memory_agent import MemoryAgent
 from agents.filter.news_filter_agent import NewsFilterAgent
 from agents.summarizer.summarizer_agent import SummarizerAgent
-from agents.search.web_search_agent import NewsSearchAgent
-from services.llm.router import get_llm_router
+from agents.search.web_search_agent import WebSearchAgent
+from services.llm.ollama import OllamaService
+from agents.social.twitter_agent import TwitterAgent
+from agents.social.facebook_agent import FacebookAgent
 
 logger = logging.getLogger(__name__)
 
@@ -28,7 +25,6 @@ if _LANGSMITH_ENABLED:
         from langsmith import traceable as _traceable
     except ImportError:
         _LANGSMITH_ENABLED = False
-
         def _traceable(name=None, **kw):
             def _dec(fn):
                 return fn
@@ -40,17 +36,26 @@ else:
         return _dec
 
 
-# ----------------------------------------------------------------------
-# AgentState definition (matches old version for compatibility)
-# ----------------------------------------------------------------------
-class AgentState(Dict[str, Any]):
-    """State dictionary passed through LangGraph workflow."""
-    pass
+class AgentState(TypedDict):
+    query:                 str
+    intent:                str
+    search_results:        List[Dict[str, Any]]
+    filtered_news:         List[Dict[str, Any]]
+    summaries:             List[str]
+    formatted_content:     str
+    post_result:           Dict[str, Any]
+    query_id:              Optional[str]
+    error:                 str
+    user_response:         str
+    awaiting_confirmation: bool
+    confirmed:             bool
+    news_preview:          List[Dict[str, str]]
+    target_platforms:      List[str]
+    progress_callback:     Optional[Callable]
+    username:              Optional[str]
+    linkedin_token:        Optional[str]
 
 
-# ----------------------------------------------------------------------
-# Tool Registry
-# ----------------------------------------------------------------------
 class ToolRegistry:
     def __init__(self):
         self._tools: Dict[str, Callable] = {}
@@ -65,16 +70,13 @@ class ToolRegistry:
         return await self._tools[name](**kwargs)
 
 
-# ----------------------------------------------------------------------
-# NewsReporterGraph
-# ----------------------------------------------------------------------
 class NewsReporterGraph:
 
     def __init__(self) -> None:
-        self.llm_service = None  # Will be lazily initialized
-        self.intent_agent = IntentAgent()
-        self.summarizer = SummarizerAgent()
-        self.formatter = FormatterAgent()
+        self.llm_service = OllamaService()
+        self.intent_agent = IntentAgent(self.llm_service)
+        self.summarizer = SummarizerAgent(self.llm_service)
+        self.formatter = FormatterAgent(self.llm_service)
 
         self.tools = ToolRegistry()
         self.tools.register("search_news", self._tool_search_news)
@@ -85,26 +87,12 @@ class NewsReporterGraph:
         self.graph = self._build_graph()
         self._resume_graph = self._build_resume_graph()
 
-    async def _get_llm(self):
-        if self.llm_service is None:
-            self.llm_service = await get_llm_router()
-        return self.llm_service
-
-    # ------------------------------------------------------------------
+  
     # Tool implementations
-    # ------------------------------------------------------------------
     @_traceable(name="tool:search_news")
     async def _tool_search_news(self, query: str, max_results: int = 5) -> List[Dict]:
-        try:
-            results = await NewsSearchAgent.search(query, max_results)
-            if results is None:
-                logger.warning("NewsSearchAgent.search returned None, using empty list")
-                return []
-            filtered = NewsFilterAgent.filter_tech_news(results, max_results=max_results)
-            return filtered if filtered is not None else []
-        except Exception as e:
-            logger.error("Tool search_news failed: %s", e)
-            return []
+        results = await WebSearchAgent.search(query, max_results)
+        return NewsFilterAgent.filter_tech_news(results, max_results=max_results)
 
     @_traceable(name="tool:post_to_linkedin")
     async def _tool_post_linkedin(self, content: str, username: Optional[str] = None,
@@ -121,9 +109,8 @@ class NewsReporterGraph:
                                   access_token: Optional[str] = None) -> Dict:
         return await TwitterAgent.post(content, access_token=access_token, username=username)
 
-    # ------------------------------------------------------------------
+   
     # Graph construction
-    # ------------------------------------------------------------------
     def _build_graph(self):
         wf = StateGraph(AgentState)
 
@@ -210,9 +197,8 @@ class NewsReporterGraph:
         sub.add_edge("prepare_response", END)
         return sub.compile()
 
-    # ------------------------------------------------------------------
+   
     # Routing helpers
-    # ------------------------------------------------------------------
     def _route_from_classify(self, state: AgentState) -> str:
         if state.get("error"):
             return "other"
@@ -239,30 +225,27 @@ class NewsReporterGraph:
     def _route_after_confirmation(self, state: AgentState) -> str:
         return "post_to_platforms" if state.get("confirmed") else "prepare_response"
 
+    
     # Node implementations
     @_traceable(name="node:classify_intent")
     async def classify_intent(self, state: AgentState) -> AgentState:
-        query = state.get("query", "")
-        if not query:
-            query = state.get("user_response") or state.get("original_query") or "tech news"
-            logger.warning("Missing 'Query' on the state, using fallback: %s", query)
         cb = state.get("progress_callback")
         if cb:
-            await cb("classify", "🤖 Understanding your request…")
+            await cb("classify", "🤔 Understanding your request…")
         try:
-            intent = await self.intent_agent.classify(query)
-            if not state.get("target_platforms") and intent in ("post_request", "news_then_post"):
-                platform = self.intent_agent.detect_platform(query)
+            intent = await self.intent_agent.classify(state["query"])
+            if not state.get("target_platforms"):
+                platform = self.intent_agent.detect_platform(state["query"])
                 if platform == "both":
                     target_platforms = ["linkedin", "facebook", "twitter"]
                 else:
                     target_platforms = [platform]
             else:
-                target_platforms = state['target_platforms']
+                target_platforms = state["target_platforms"]
             return {**state, "intent": intent, "target_platforms": target_platforms, "error": ""}
         except Exception as exc:
-            logger.error("Intent classification failed: %s", exc)
-            return {**state, "intent": "other",  "error": str(exc)}
+            logger.error("classify_intent failed: %s", exc)
+            return {**state, "intent": "other", "error": str(exc)}
 
     @_traceable(name="node:search_news")
     async def search_news(self, state: AgentState) -> AgentState:
@@ -271,9 +254,6 @@ class NewsReporterGraph:
             await cb("search", "🔍 Searching for the latest tech news…")
         try:
             results = await self.tools.call("search_news", query=state["query"])
-            # Ensure results is always a list
-            if results is None:
-                results = []
             return {**state, "search_results": results, "error": ""}
         except Exception as exc:
             logger.error("search_news failed: %s", exc)
@@ -281,10 +261,7 @@ class NewsReporterGraph:
 
     @_traceable(name="node:filter_news")
     async def filter_news(self, state: AgentState) -> AgentState:
-        search_results = state.get("search_results") or []
-        filtered = NewsFilterAgent.filter_tech_news(search_results)
-        if filtered is None:
-            filtered = []
+        filtered = NewsFilterAgent.filter_tech_news(state.get("search_results", []))
         return {**state, "filtered_news": filtered}
 
     @_traceable(name="node:summarize_news")
@@ -292,7 +269,7 @@ class NewsReporterGraph:
         cb = state.get("progress_callback")
         if cb:
             await cb("summarize", "📝 Summarising articles…")
-        articles = state.get("filtered_news") or []
+        articles = state.get("filtered_news", [])
         summaries = []
         preview = []
         for art in articles[:5]:
@@ -302,19 +279,22 @@ class NewsReporterGraph:
                 preview.append({
                     "title": art.get("title", ""),
                     "source": art.get("source", art.get("url", "")),
-                    "url": art.get("url", ""),})
+                    "url": art.get("url", ""),
+                })
             await MemoryAgent.store_news_article(art)
         if not summaries:
             return {
                 **state,
-                "summaries": [],        # ← ensure list, not None
+                "summaries": [],
                 "news_preview": [],
-                "error": "No relevant tech news found for this query.",}
+                "error": "No relevant tech news found for this query.",
+            }
         return {**state, "summaries": summaries, "news_preview": preview, "error": ""}
 
     @_traceable(name="node:format_post")
     async def format_post(self, state: AgentState) -> AgentState:
-        summaries = state.get("summaries") or []
+        # ── GUARD: prevent formatting when no summaries exist for posting ──
+        summaries = state.get("summaries", [])
         intent = state.get("intent", "")
         if not summaries and intent in ("post_request", "news_then_post"):
             return {
@@ -324,7 +304,7 @@ class NewsReporterGraph:
             }
 
         cb = state.get("progress_callback")
-        platforms = state.get("target_platforms") or ["linkedin"]
+        platforms = state.get("target_platforms", ["linkedin"])
         if cb:
             platform_names = ", ".join(p.capitalize() for p in platforms)
             await cb("format", f"✍️ Crafting post for {platform_names}…")
@@ -350,7 +330,7 @@ class NewsReporterGraph:
     @_traceable(name="node:post_to_platforms")
     async def post_to_platforms(self, state: AgentState) -> AgentState:
         cb = state.get("progress_callback")
-        platforms = state.get("target_platforms") or ["linkedin"]
+        platforms = state.get("target_platforms", ["linkedin"])
         content = state.get("formatted_content", "")
         username = state.get("username")
         token = state.get("linkedin_token")
@@ -391,7 +371,7 @@ class NewsReporterGraph:
             state.get("user_response", ""),
             user_id=state.get("username"),
         )
-        post_results = state.get("post_result") or []
+        post_results = state.get("post_result", [])
         if isinstance(post_results, dict):
             post_results = [post_results]
         for post_res in post_results:
@@ -411,7 +391,7 @@ class NewsReporterGraph:
         intent = state.get("intent", "other")
         if intent == "other":
             msg = (
-                "I'm your AI News Reporter! 📰\n\n"
+                "I'm your AI News Reporter! \n\n"
                 "I can:\n"
                 "• **Search tech news** — e.g. *'Latest AI news'*\n"
                 "• **Post to LinkedIn, Facebook, Twitter** — e.g. *'Find ML trends and post to LinkedIn and Facebook'*\n\n"
@@ -421,25 +401,24 @@ class NewsReporterGraph:
             msg = f"Something went wrong: {state.get('error', 'Unknown error')}"
         return {**state, "user_response": msg}
 
-    # ------------------------------------------------------------------
+    
     # Response builder
-    # ------------------------------------------------------------------
     def _build_response(self, state: AgentState) -> str:
         intent = state.get("intent", "")
-        summaries = state.get("summaries") or []
-        preview = state.get("news_preview") or []
-        post_res = state.get("post_result") or {}
+        summaries = state.get("summaries", [])
+        preview = state.get("news_preview", [])
+        post_res = state.get("post_result", {})
         error = state.get("error", "")
         formatted = state.get("formatted_content", "")
-        platforms = state.get("target_platforms") or ["linkedin"]
+        platforms = state.get("target_platforms", ["linkedin"])
 
         if error and not summaries:
-            return f"⚠️ {error}"
+            return f"{error}"
 
         parts = []
 
         if summaries:
-            parts.append("## 🔍 News Found\n")
+            parts.append("##  News Found\n")
             for i, (summary, article) in enumerate(zip(summaries, preview or [{}] * len(summaries)), 1):
                 title = article.get("title", f"Article {i}")
                 source = article.get("source", "")
@@ -452,7 +431,7 @@ class NewsReporterGraph:
         if intent in ("news_then_post", "post_request") and formatted:
             parts.append("\n---\n")
             platform_names = ", ".join(p.capitalize() for p in platforms)
-            parts.append(f"## 📢 Post to {platform_names}\n")
+            parts.append(f"##  Post to {platform_names}\n")
             parts.append(formatted)
 
             if post_res:
@@ -460,9 +439,9 @@ class NewsReporterGraph:
                     successes = [r.get("platform") for r in post_res if r.get("success")]
                     failures = [f"{r.get('platform')}: {r.get('error')}" for r in post_res if not r.get("success")]
                     if successes:
-                        parts.append(f"\n✅ **Published to {', '.join(s.capitalize() for s in successes)}!**")
+                        parts.append(f"\n **Published to {', '.join(s.capitalize() for s in successes)}!**")
                     if failures:
-                        parts.append(f"\n❌ **Failed:** {', '.join(failures)}")
+                        parts.append(f"\n**Failed:** {', '.join(failures)}")
                 else:
                     success = post_res.get("success", False)
                     post_id = post_res.get("post_id") or post_res.get("tweet_id")
@@ -477,22 +456,21 @@ class NewsReporterGraph:
                             elif platform == "twitter":
                                 link = f"https://twitter.com/i/web/status/{post_id}"
                             if link:
-                                parts.append(f"✅ **Published to {platform.capitalize()}!** [View post]({link})")
+                                parts.append(f"**Published to {platform.capitalize()}!** [View post]({link})")
                             else:
-                                parts.append(f"✅ **Published to {platform.capitalize()}!**")
+                                parts.append(f"**Published to {platform.capitalize()}!**")
                         else:
-                            parts.append(f"✅ **Published to {platform.capitalize()}!**")
+                            parts.append(f"**Published to {platform.capitalize()}!**")
                     else:
-                        parts.append(f"❌ **Publishing failed:** {post_err}")
+                        parts.append(f"**Publishing failed:** {post_err}")
 
         if not parts:
             return state.get("user_response") or "Done!"
 
         return "\n".join(parts)
 
-    # ------------------------------------------------------------------
+    
     # State initialisation and public entry points
-    # ------------------------------------------------------------------
     def _initial_state(self, query: str, username: Optional[str] = None,
                        progress_callback: Optional[Callable] = None) -> AgentState:
         return {

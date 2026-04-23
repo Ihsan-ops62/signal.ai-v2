@@ -1,12 +1,8 @@
-"""
-Formatter agent with platform-specific personas for LinkedIn, Facebook, and Twitter.
-"""
 import logging
 import random
 import re
-from typing import List
 
-from services.llm.router import get_llm_router
+from services.llm.ollama import OllamaService
 
 logger = logging.getLogger(__name__)
 
@@ -55,30 +51,21 @@ _TWITTER_PERSONAS = [
     },
 ]
 
-_SKIP_PREFIXES = (
-    "here is", "here's", "linkedin post:", "facebook post:", "twitter post:",
-    "tweet:", "post:", "---", "```", "sure", "of course"
-)
-_MAX_WORDS_LINKEDIN = 200
-_MAX_WORDS_FACEBOOK = 180
-_MAX_CHARS_TWITTER = 280
+_SKIP_PREFIXES = ("here is", "here's", "linkedin post:", "facebook post:", "twitter post:", "tweet:", "post:", "---", "```", "sure", "of course")
+_MAX_WORDS_LINKEDIN = 70
+_MAX_WORDS_FACEBOOK = 50
+_MAX_CHARS_TWITTER = 50
 
 
 class FormatterAgent:
-    def __init__(self):
-        self.llm = None
-
-    async def _get_llm(self):
-        if self.llm is None:
-            self.llm = await get_llm_router()
-        return self.llm
+    def __init__(self, llm_service: OllamaService) -> None:
+        self.llm = llm_service
 
     async def format_for_linkedin(self, summaries: list[str]) -> str:
         if not summaries:
             logger.warning("No summaries provided to FormatterAgent (LinkedIn)")
             return ""
 
-        llm = await self._get_llm()
         persona = random.choice(_LINKEDIN_PERSONAS)
         combined = "\n\n".join(f"• {s.strip()}" for s in summaries if s.strip())
 
@@ -94,15 +81,17 @@ HARD RULES:
 4. Voice: Authentic, direct, conversational. NO buzzwords.
 5. Format: Use line breaks between thoughts.
 6. Include 1-2 relevant emojis where they feel natural.
-7. End with 2-3 hashtags that are specific to the content (e.g., #GenerativeAI, #CloudNews).
-8. Max 180 words.
+7. The post should be concise and impactful, ideally around 50 words, but do not cut off mid-sentence. If you need to trim, end with a complete thought.
+8. If the post doesn't naturally include hashtags, add at the end of post not in the middlie of sentences or before emojis at the end of post
+9. End with 2-3 hashtags that are specific to the content (e.g., #GenerativeAI, #CloudNews).
+10. Max 180 words.
 
 Tech news:
 {combined}
 
 Post:"""
 
-        raw = await llm.generate(prompt, temperature=0.7)
+        raw = await self.llm.generate(prompt, temperature=0.7)
         post = self._clean_output(raw, max_words=_MAX_WORDS_LINKEDIN)
         post = self._ensure_hashtags_and_emojis(post, platform="linkedin")
         post = self._post_process(post)
@@ -114,7 +103,6 @@ Post:"""
             logger.warning("No summaries provided to FormatterAgent (Facebook)")
             return ""
 
-        llm = await self._get_llm()
         persona = random.choice(_FACEBOOK_PERSONAS)
         combined = "\n\n".join(f"• {s.strip()}" for s in summaries if s.strip())
 
@@ -137,7 +125,7 @@ Tech news:
 
 Post:"""
 
-        raw = await llm.generate(prompt, temperature=0.7)
+        raw = await self.llm.generate(prompt, temperature=0.7)
         post = self._clean_output(raw, max_words=_MAX_WORDS_FACEBOOK)
         post = self._ensure_hashtags_and_emojis(post, platform="facebook")
         post = self._post_process(post)
@@ -149,7 +137,6 @@ Post:"""
             logger.warning("No summaries provided to FormatterAgent (Twitter)")
             return ""
 
-        llm = await self._get_llm()
         persona = random.choice(_TWITTER_PERSONAS)
         combined = "\n".join(f"- {s.strip()}" for s in summaries if s.strip())
 
@@ -170,7 +157,7 @@ Tech news:
 
 Tweet:"""
 
-        raw = await llm.generate(prompt, temperature=0.7)
+        raw = await self.llm.generate(prompt, temperature=0.7)
         tweet = self._clean_output(raw, max_words=50)
         tweet = self._ensure_hashtags_and_emojis(tweet, platform="twitter")
         tweet = self._post_process(tweet)
@@ -191,14 +178,12 @@ Tweet:"""
             else:
                 text += " #TechNews #AI"
         # Check for emojis (very basic)
-        emoji_pattern = re.compile(
-            "["
-            "\U0001F600-\U0001F64F"
-            "\U0001F300-\U0001F5FF"
-            "\U0001F680-\U0001F6FF"
-            "\U0001F1E0-\U0001F1FF"
-            "]+", flags=re.UNICODE
-        )
+        emoji_pattern = re.compile("["
+                                   u"\U0001F600-\U0001F64F"
+                                   u"\U0001F300-\U0001F5FF"
+                                   u"\U0001F680-\U0001F6FF"
+                                   u"\U0001F1E0-\U0001F1FF"
+                                   "]+", flags=re.UNICODE)
         if not emoji_pattern.search(text):
             if platform == "linkedin":
                 text = "🤖 " + text

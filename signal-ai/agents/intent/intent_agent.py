@@ -1,110 +1,95 @@
 import logging
-from typing import Optional
+import re
+from typing import List
 
-from services.llm.router import get_llm_router
-from core.exceptions import LLMError
+from services.llm.ollama import OllamaService
 
 logger = logging.getLogger(__name__)
 
+_VALID_INTENTS = frozenset({"news_query", "post_request", "news_then_post", "other"})
+_CLEAN_RE      = re.compile(r'[\s"\'`.,;:]+')
+_FACEBOOK_RE   = re.compile(r'\b(facebook|fb)\b', re.IGNORECASE)
+_LINKEDIN_RE   = re.compile(r'\b(linkedin|linked in)\b', re.IGNORECASE)
+_TWITTER_RE    = re.compile(r'\b(twitter|tweet)\b', re.IGNORECASE)
+
+# Expanded keyword sets for heuristic
+_SEARCH_KEYWORDS = {"search", "find", "fetch", "look up", "get", "show", "tell", "what is", "latest", "news", "update", "headline", "article", "story", "trend", "recent"}
+_POST_KEYWORDS   = {"post", "share", "publish", "upload", "send", "tweet"}
+
 
 class IntentAgent:
-    """Agent for classifying user intent."""
-    
-    VALID_INTENTS = [
-        "search_news",
-        "summarize",
-        "post",
-        "discuss",
-        "help"
-    ]
-    
-    def __init__(self):
-        self.name = "IntentAgent"
-    
+    def __init__(self, llm_service: OllamaService) -> None:
+        self.llm = llm_service
+
     async def classify(self, query: str) -> str:
-        """
-        Classify user query intent and return intent string.
-        """
-        try:
-            llm = await get_llm_router()
-            
-            prompt = f"""
-Classify the user's intent from the following query. 
-Return ONLY one of these keywords: search_news, summarize, post, discuss, help
+        """Return intent: news_query | post_request | news_then_post | other."""
+        q_lower = query.lower()
 
-Query: "{query}"
+        has_search = any(kw in q_lower for kw in _SEARCH_KEYWORDS)
+        has_post   = any(kw in q_lower for kw in _POST_KEYWORDS)
 
-Intent:
+        # Strong heuristic: if both search and post keywords appear, it's news_then_post
+        if has_search and has_post:
+            logger.info("Heuristic: both search and post keywords → news_then_post")
+            return "news_then_post"
+
+        # Use LLM for fine-grained classification only when ambiguous
+        prompt = f"""You are an intent classifier. Classify the user's request into exactly one category:
+
+- news_query      : user ONLY wants to hear/read recent tech news. No mention of posting.
+- post_request    : user wants to publish specific content to social media (they provide the content).
+- news_then_post  : user explicitly asks to BOTH search for news AND post it to social media.
+- other           : anything else — chat, questions about the bot, jokes, etc.
+
+Examples:
+"What's new in AI?" → news_query
+"Latest machine learning news" → news_query
+"Find ML news" → news_query
+"Post this to LinkedIn: Hello world" → post_request
+"Share on Facebook: Check this out" → post_request
+"Find AI news and post it to LinkedIn" → news_then_post
+"Search ML news and share on Facebook" → news_then_post
+"Search ML news and share on Twitter" → news_then_post
+"Tell me about yourself" → other
+"How are you?" → other
+"Hi" → other
+
+User query: "{query}"
+
+Reply with ONLY the category name — no punctuation, no explanation.
 """
-            
-            response = await llm.generate(
-                prompt=prompt,
-                max_tokens=20,
-                temperature=0.1
-            )
-            
-            intent = response.text.strip().lower()
-            
-            if intent not in self.VALID_INTENTS:
-                logger.warning(f"Invalid intent: {intent}, defaulting to discuss")
-                intent = "discuss"
-            
-            logger.info(f"Intent classified: {intent} for query: {query[:50]}...")
-            return intent
-        
-        except Exception as e:
-            logger.error(f"Intent classification failed: {str(e)}")
-            return "discuss"
-    
+        raw = await self.llm.generate(prompt, temperature=0.1)
+        intent = _CLEAN_RE.sub("", raw).lower()
+
+        if intent not in _VALID_INTENTS:
+            for candidate in _VALID_INTENTS:
+                if candidate in raw.lower():
+                    intent = candidate
+                    break
+            else:
+                logger.warning("Unrecognised intent %r → default 'other'", raw)
+                intent = "other"
+
+        logger.info("Classified intent: %r → %r", query[:60], intent)
+        return intent
+
+    def detect_platforms(self, query: str) -> List[str]:
+        """Return list of platforms mentioned: 'linkedin', 'facebook', 'twitter'."""
+        platforms = []
+        if _LINKEDIN_RE.search(query):
+            platforms.append("linkedin")
+        if _FACEBOOK_RE.search(query):
+            platforms.append("facebook")
+        if _TWITTER_RE.search(query):
+            platforms.append("twitter")
+        if not platforms:
+            platforms.append("linkedin")  # default
+        logger.debug("Detected platforms for '%s': %s", query[:50], platforms)
+        return platforms
+
+    # Legacy method (kept for compatibility)
     def detect_platform(self, query: str) -> str:
-        """
-        Detect which social platform is mentioned in the query.
-        Returns "linkedin", "facebook", "twitter", or "both".
-        """
-        q = query.lower()
-        has_linkedin = "linkedin" in q or "linked in" in q
-        has_facebook = "facebook" in q or "fb" in q
-        has_twitter = "twitter" in q or "tweet" in q
-        
-        if has_linkedin and (has_facebook or has_twitter):
+        platforms = self.detect_platforms(query)
+        if len(platforms) > 1:
             return "both"
-        if has_linkedin:
-            return "linkedin"
-        if has_facebook:
-            return "facebook"
-        if has_twitter:
-            return "twitter"
-        return "linkedin"  # default
-    
-    async def batch_classify(self, queries: list[str]) -> list[dict]:
-        """Classify multiple queries (kept for compatibility)."""
-        results = []
-        for query in queries:
-            try:
-                intent = await self.classify(query)
-                results.append({
-                    "intent": intent,
-                    "confidence": 0.95,
-                    "parameters": {"query": query}
-                })
-            except Exception as e:
-                logger.warning(f"Failed to classify query: {query}")
-                results.append({
-                    "intent": "discuss",
-                    "confidence": 0.0,
-                    "parameters": {},
-                    "error": str(e)
-                })
-        return results
-
-
-# Module-level singleton
-_intent_agent = None
-
-
-async def get_intent_agent() -> IntentAgent:
-    """Get or create intent agent."""
-    global _intent_agent
-    if _intent_agent is None:
-        _intent_agent = IntentAgent()
-    return _intent_agent
+        return platforms[0]
