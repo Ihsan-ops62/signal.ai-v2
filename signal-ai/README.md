@@ -4,7 +4,7 @@ Signal.AI is an advanced, autonomous agent platform designed to act as your pers
 
 By integrating human-in-the-loop confirmation, Signal.AI combines the speed of automation with human editorial control.
 
-![Signal.AI Workspace](./signal1.png)
+
 
 ## Core Capabilities
 
@@ -22,6 +22,7 @@ By integrating human-in-the-loop confirmation, Signal.AI combines the speed of a
 Here is how you interact with and manage Signal.AI.
 
 ### 1. The Workspace
+![Signal.AI Workspace](./signal1.png)
 
 The main dashboard is split into three areas:
 * **Left Sidebar:** Manage chat history and toggle **Voice Mode**.
